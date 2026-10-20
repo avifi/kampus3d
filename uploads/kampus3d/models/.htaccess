@@ -1,0 +1,19 @@
+# Folder ini hanya berisi model .glb. Cegah daftar folder dan eksekusi skrip.
+Options -Indexes -ExecCGI
+AddType model/gltf-binary .glb
+
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php7.c>
+  php_flag engine off
+</IfModule>
+<IfModule mod_php8.c>
+  php_flag engine off
+</IfModule>
+
+<IfModule mod_authz_core.c>
+  <FilesMatch "(?i)\.(php[0-9]?|phtml|phar|pl|py|cgi|sh)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
