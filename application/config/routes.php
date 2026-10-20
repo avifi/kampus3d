@@ -49,10 +49,20 @@ defined('BASEPATH') OR exit('No direct script access allowed');
 | Examples:	my-controller/index	-> my_controller/index
 |		my-controller/my-method	-> my_controller/my_method
 */
-$route['default_controller'] = 'welcome';
+$route['default_controller'] = 'kampus3d';
 $route['404_override'] = '';
 $route['translate_uri_dashes'] = FALSE;
 
+// Rute Autentikasi
 $route['login']  = 'kampus3d_admin/login';
 $route['logout'] = 'kampus3d_admin/logout';
+
+// Rute Admin / Editor yang lebih ringkas & mudah
+$route['admin']              = 'kampus3d_admin';
+$route['admin/(:any)']       = 'kampus3d_admin/$1';
+
+// Rute Publik alternatif
+$route['peta']               = 'kampus3d';
+$route['publik']             = 'kampus3d';
+$route['data']               = 'kampus3d/data';
 

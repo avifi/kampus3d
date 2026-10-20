@@ -75,7 +75,7 @@ class Kampus3d_admin extends CI_Controller
     public function login()
     {
         if ($this->session->userdata($this->cfg('k3d_session_login'))) {
-            redirect('kampus3d_admin');
+            redirect('admin');
         }
 
         $error = NULL;
@@ -97,7 +97,7 @@ class Kampus3d_admin extends CI_Controller
                         'nama_lengkap'                  => $user['nama_lengkap'],
                         'role'                          => $user['role'],
                     ));
-                    redirect('kampus3d_admin');
+                    redirect('admin');
                 } else {
                     $error = 'Username atau password tidak sesuai.';
                 }
@@ -107,9 +107,14 @@ class Kampus3d_admin extends CI_Controller
         $data = array(
             'error'     => $error,
             'username'  => $username,
-            'urlAksi'   => site_url('kampus3d_admin/login'),
+            'urlAksi'   => site_url('login'),
             'assetBase' => base_url('assets/kampus3d/'),
             'judul'     => $this->cfg('k3d_judul'),
+            'urlPublik' => site_url(),
+            'csrf'      => array(
+                'name' => $this->security->get_csrf_token_name(),
+                'hash' => $this->security->get_csrf_hash(),
+            ),
         );
 
         $this->load->view('kampus3d/login', $data);

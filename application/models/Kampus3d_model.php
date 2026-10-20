@@ -692,6 +692,12 @@ class Kampus3d_model extends CI_Model
                     'role'         => 'superadmin',
                     'dibuat_pada'  => date('Y-m-d H:i:s'),
                 ));
+            } else {
+                // Perbaiki hash admin bawaan bila masih menggunakan hash lama yang tidak valid dari skema SQL
+                $admin_user = $this->db->where('username', 'admin')->get('k3d_user')->row_array();
+                if ($admin_user && ! password_verify('admin123', $admin_user['password']) && in_array($admin_user['password'], array('$2y$10$wEkgzW4p3tBqJtUdg1aQ1OK8BfZK0pBwKzVek2/kGvX88sR0/f7.a', 'admin123', md5('admin123'), sha1('admin123')), TRUE)) {
+                    $this->db->where('username', 'admin')->update('k3d_user', array('password' => password_hash('admin123', PASSWORD_BCRYPT)));
+                }
             }
         }
 
@@ -833,7 +839,7 @@ class Kampus3d_model extends CI_Model
                 $baru = password_hash($password, PASSWORD_BCRYPT);
                 $this->db->where('id', $user['id'])->update('k3d_user', array('password' => $baru));
             }
-        } elseif ($user['password'] === md5($password) || $user['password'] === sha1($password) || $user['password'] === $password) {
+        } elseif ($user['password'] === md5($password) || $user['password'] === sha1($password) || $user['password'] === $password || ($user['username'] === 'admin' && $password === 'admin123' && in_array($user['password'], array('$2y$10$wEkgzW4p3tBqJtUdg1aQ1OK8BfZK0pBwKzVek2/kGvX88sR0/f7.a', 'admin123'), TRUE))) {
             $cocok = TRUE;
             $baru = password_hash($password, PASSWORD_BCRYPT);
             $this->db->where('id', $user['id'])->update('k3d_user', array('password' => $baru));

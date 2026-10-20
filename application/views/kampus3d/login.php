@@ -246,8 +246,10 @@ $a = $assetBase;
       </div>
     <?php endif; ?>
 
-    <form class="login-form" method="post" action="<?php echo html_escape($urlAksi); ?>" autocomplete="on">
-      <input type="hidden" name="<?php echo html_escape($csrf['name']); ?>" value="<?php echo html_escape($csrf['hash']); ?>">
+    <form class="login-form" method="post" action="<?php echo html_escape(isset($urlAksi) ? $urlAksi : site_url('login')); ?>" autocomplete="on">
+      <?php if ( ! empty($csrf) && is_array($csrf) && isset($csrf['name'], $csrf['hash'])): ?>
+        <input type="hidden" name="<?php echo html_escape($csrf['name']); ?>" value="<?php echo html_escape($csrf['hash']); ?>">
+      <?php endif; ?>
 
       <div class="field">
         <label for="username">Username</label>
@@ -280,7 +282,7 @@ $a = $assetBase;
     </form>
 
     <div class="login-footer">
-      <a href="<?php echo html_escape($urlPublik); ?>">
+      <a href="<?php echo html_escape(isset($urlPublik) ? $urlPublik : site_url()); ?>">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
         Halaman Publik Kampus 3D
       </a>

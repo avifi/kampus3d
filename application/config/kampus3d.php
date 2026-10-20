@@ -13,7 +13,7 @@ $config['k3d_session_login'] = 'logged_in';
 $config['k3d_session_user'] = 'username';
 
 // Halaman login (relatif terhadap site_url). Admin yang belum login diarahkan ke sini.
-$config['k3d_login_url'] = 'kampus3d_admin/login';
+$config['k3d_login_url'] = 'login';
 
 // Judul yang tampil di halaman publik.
 $config['k3d_judul'] = 'Kampus 3D UNISNU';

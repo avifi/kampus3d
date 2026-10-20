@@ -100,5 +100,5 @@ CREATE TABLE IF NOT EXISTS `k3d_user_unit` (
 
 -- Akun admin bawaan (password: admin123)
 INSERT IGNORE INTO `k3d_user` (`username`, `password`, `nama_lengkap`, `role`, `dibuat_pada`)
-VALUES ('admin', '$2y$10$wEkgzW4p3tBqJtUdg1aQ1OK8BfZK0pBwKzVek2/kGvX88sR0/f7.a', 'Administrator Kampus', 'superadmin', NOW());
+VALUES ('admin', '$2y$10$TKh8H1.PfQx37YgCzwiKb.KjNyWgaHb9cbcoQgdIVFlYg7B77UdFm', 'Administrator Kampus', 'superadmin', NOW());
 
