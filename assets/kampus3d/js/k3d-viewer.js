@@ -105,6 +105,9 @@
     if (typeof K3D_AVATAR === 'undefined') { return; }
     if (avatarCtrl) {
       avatarCtrl.setSetting(avatarSetting);
+      if (typeof avatarCtrl.setGraf === 'function') {
+        avatarCtrl.setGraf(graf);
+      }
       return;
     }
     avatarCtrl = K3D_AVATAR.buatAvatarController(stage, {
@@ -113,6 +116,18 @@
       graf: graf,
       onToast: function (m) { setStatus(m); },
       onInteract: function (id, node) { select(id, { fly: false }); },
+      onEnterObject: function (id, node, masukInfo) {
+        select(id, { fly: false });
+        if (node && node.tipe === 'ruang') {
+          var fl = lantaiOf(node);
+          if (fl && curFloors && curFloors.length) {
+            var fIdx = curFloors.findIndex(function (x) { return x.id === fl.id; });
+            if (fIdx >= 0) {
+              setFloorIndex(fIdx + 1, false);
+            }
+          }
+        }
+      },
       onTransitLantai: function (pt) {
         setStatus('Berpindah lantai via ' + (pt.jenis === 'lift' ? 'Lift' : 'Tangga') + ' (' + (pt.label || 'Lantai') + ')');
         if (pt.ruangId) { select(pt.ruangId, { fly: false }); }

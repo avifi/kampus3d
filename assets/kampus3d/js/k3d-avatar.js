@@ -241,6 +241,54 @@
       sprint: false
     };
 
+    var isDraggingMouse = false;
+    var lastMousePos = { x: 0, y: 0 };
+
+    function onMouseDown(e) {
+      if (!active) { return; }
+      // Jangan mulai seret jika mengklik elemen UI tombol, popup, dialog
+      if (e.target && (e.target.closest('button') || e.target.closest('.k3d-entry-popup') || e.target.closest('.k3d-avatar-mobile') || e.target.closest('dialog') || e.target.closest('.qr-dlg'))) {
+        return;
+      }
+      isDraggingMouse = true;
+      lastMousePos = { x: e.clientX, y: e.clientY };
+      if (canvas) { canvas.style.cursor = 'grabbing'; }
+    }
+
+    function onMouseUp(e) {
+      if (!active) { return; }
+      if (isDraggingMouse) {
+        isDraggingMouse = false;
+        if (canvas) { canvas.style.cursor = 'grab'; }
+      }
+    }
+
+    function onMouseMove(e) {
+      if (!active) { return; }
+
+      // Jika user secara eksplisit berada di pointer lock
+      if (document.pointerLockElement === canvas) {
+        var sens = 0.0022;
+        avatarYaw -= e.movementX * sens;
+        avatarPitch -= e.movementY * sens;
+        avatarPitch = Math.max(-1.35, Math.min(1.30, avatarPitch));
+        return;
+      }
+
+      // Mode kursor bebas: Seret mouse (drag) untuk memutar sudut pandang kamera
+      if (isDraggingMouse) {
+        var dx = e.clientX - lastMousePos.x;
+        var dy = e.clientY - lastMousePos.y;
+        lastMousePos.x = e.clientX;
+        lastMousePos.y = e.clientY;
+
+        var sensDrag = 0.0035;
+        avatarYaw -= dx * sensDrag;
+        avatarPitch -= dy * sensDrag;
+        avatarPitch = Math.max(-1.35, Math.min(1.30, avatarPitch));
+      }
+    }
+
     function onKeyDown(e) {
       if (!active) { return; }
       var tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
@@ -257,8 +305,11 @@
           e.preventDefault();
           break;
         case 'KeyE':
-          lakukanInteraksi();
-          e.preventDefault();
+        case 'Enter':
+          if (interaksiAktif) {
+            lakukanInteraksi();
+            e.preventDefault();
+          }
           break;
         case 'KeyH':
         case 'KeyQ':
@@ -280,36 +331,22 @@
       }
     }
 
-    function onMouseMove(e) {
-      if (!active) { return; }
-      if (document.pointerLockElement !== canvas) { return; }
-
-      var sens = 0.0022;
-      avatarYaw -= e.movementX * sens;
-      avatarPitch -= e.movementY * sens;
-
-      // Batasi sudut vertikal (pitch) antara -77° dan +74°
-      var maxPitch = 1.30;
-      var minPitch = -1.35;
-      avatarPitch = Math.max(minPitch, Math.min(maxPitch, avatarPitch));
-    }
-
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
-    document.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('blur', function () { isDraggingMouse = false; });
+    canvas.addEventListener('contextmenu', function (e) {
+      if (active) { e.preventDefault(); }
+    });
 
     document.addEventListener('pointerlockchange', function () {
       if (!active) { return; }
       var isLocked = (document.pointerLockElement === canvas);
       var crosshair = hudEl.querySelector('#avatarCrosshair');
       if (crosshair) {
-        crosshair.style.opacity = isLocked ? '1' : '0.2';
-      }
-    });
-
-    canvas.addEventListener('click', function (e) {
-      if (active && document.pointerLockElement !== canvas) {
-        try { canvas.requestPointerLock(); } catch (err) { /* diabaikan */ }
+        crosshair.style.opacity = isLocked ? '1' : '0.4';
       }
     });
 
@@ -321,13 +358,24 @@
     hudEl.hidden = true;
     hudEl.innerHTML = [
       '<button class="k3d-avatar-top-exit" id="avatarTopExit" type="button" title="Keluar ke mode lihat seluruh kampus (Tekan H, Q, atau ESC)">✕ Lihat Seluruh Kampus (H / ESC)</button>',
-      '<div class="k3d-avatar-crosshair" id="avatarCrosshair"></div>',
+      '<div class="k3d-avatar-crosshair" id="avatarCrosshair" style="display:none;"></div>',
+      '<div class="k3d-entry-popup" id="avatarEntryPopup" hidden>',
+        '<div class="k3d-entry-badge" id="avatarEntryBadge">🚪 Pintu Masuk</div>',
+        '<div class="k3d-entry-title" id="avatarEntryTitle">Nama Gedung / Ruang</div>',
+        '<div class="k3d-entry-desc" id="avatarEntryDesc">Klik tombol atau tekan [E] untuk masuk ke pintu masuk.</div>',
+        '<div class="k3d-entry-actions">',
+          '<button class="k3d-entry-btn" id="avatarEntryBtn" type="button">',
+            '<span class="k3d-entry-btn-text" id="avatarEntryBtnText">Masuk Sekarang</span>',
+            '<kbd>E</kbd>',
+          '</button>',
+        '</div>',
+      '</div>',
       '<div class="k3d-avatar-prompt" id="avatarPrompt" hidden>',
         '<span class="k3d-prompt-key">E</span>',
         '<span class="k3d-prompt-text" id="avatarPromptText">Interaksi</span>',
       '</div>',
       '<div class="k3d-avatar-help" id="avatarHelp">',
-        '<span><b>WASD</b>: Gerak &middot; <b>Shift</b>: Lari &middot; <b>V</b>: Kamera 1P/3P &middot; <b>E</b>: Aksi &middot; <b>H / Q / ESC</b>: Seluruh Kampus</span>',
+        '<span><b>WASD</b>: Gerak &middot; <b>Seret Mouse</b>: Putar Kamera &middot; <b>Shift</b>: Lari &middot; <b>V</b>: Kamera 1P/3P &middot; <b>E</b>: Aksi / Masuk</span>',
         '<button class="k3d-avatar-exit-btn" id="avatarExitBtn" type="button" title="Keluar ke mode lihat seluruh kampus">Lihat Seluruh Kampus (H)</button>',
       '</div>',
       '<div class="k3d-avatar-mobile" id="avatarMobile">',
@@ -345,6 +393,20 @@
       '</div>'
     ].join('');
     (opts.container || document.body).appendChild(hudEl);
+
+    var elEntryPopup = hudEl.querySelector('#avatarEntryPopup');
+    var elEntryBadge = hudEl.querySelector('#avatarEntryBadge');
+    var elEntryTitle = hudEl.querySelector('#avatarEntryTitle');
+    var elEntryDesc = hudEl.querySelector('#avatarEntryDesc');
+    var elEntryBtn = hudEl.querySelector('#avatarEntryBtn');
+    var elEntryBtnText = hudEl.querySelector('#avatarEntryBtnText');
+
+    if (elEntryBtn) {
+      elEntryBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        lakukanInteraksi();
+      });
+    }
 
     var elPrompt = hudEl.querySelector('#avatarPrompt');
     var elPromptText = hudEl.querySelector('#avatarPromptText');
@@ -514,6 +576,8 @@
       });
     }
 
+    var lastEntrancePos = null;
+
     /**
      * Memeriksa apakah posisi baru menabrak dinding luar.
      * Karakter di luar gedung tidak bisa menembus dinding gedung kecuali melalui pintu masuk.
@@ -521,6 +585,11 @@
      */
     function cekTabrakan(x, z, y) {
       var tebalDinding = 0.40;
+
+      // Jika baru saja masuk melalui pintu / teleport pintu masuk, izinkan pergerakan bebas di area pintu
+      if (lastEntrancePos && Math.hypot(x - lastEntrancePos.x, z - lastEntrancePos.z) < 2.2) {
+        return false;
+      }
 
       for (var i = 0; i < colliders.length; i++) {
         var c = colliders[i];
@@ -568,14 +637,140 @@
         var p = pt.pos || pt.worldPos;
         if (p && j === 'pintu' && (oId === objekId || rId === objekId)) {
           var dist = Math.hypot(x - p.x, z - p.z);
-          if (dist < 2.4) { dekat = true; }
+          if (dist < 2.6) { dekat = true; }
         }
       });
       return dekat;
     }
 
+    /** Mencari titik pintu rute yang tertaut ke objek tertentu */
+    function cariPintuObjek(objekId) {
+      if (!opts.graf || !opts.graf.titik) { return null; }
+      var pintuPt = null;
+      var minDist = 999;
+      opts.graf.titik.forEach(function (pt) {
+        var j = pt.jenis || (pt.t && pt.t.jenis);
+        var rId = pt.ruangId || (pt.t && pt.t.ruang_id);
+        var oId = pt.objekId || (pt.t && pt.t.objek_id);
+        if (j === 'pintu' && (rId === objekId || oId === objekId)) {
+          var pCoord = pt.pos || pt.worldPos;
+          if (pCoord) {
+            var d = avatarPos.distanceTo(pCoord);
+            if (d < minDist) {
+              minDist = d;
+              pintuPt = pt;
+            }
+          }
+        }
+      });
+      return pintuPt;
+    }
+
+    /** Menghitung posisi pintu masuk terbaik untuk gedung atau ruang */
+    function dapatkanPosisiPintuMasuk(targetId, targetNode) {
+      var box = stage.worldBox ? stage.worldBox(targetId) : new THREE.Box3();
+      var hasBox = box && !box.isEmpty();
+      var c = hasBox ? box.getCenter(new THREE.Vector3()) : new THREE.Vector3();
+
+      var pintuPt = cariPintuObjek(targetId);
+      if (pintuPt) {
+        var pCoord = (pintuPt.pos || pintuPt.worldPos).clone();
+        var yaw = 0;
+        if (hasBox) {
+          // Hadapkan karakter ke bagian dalam gedung/ruang
+          var dx = c.x - pCoord.x;
+          var dz = c.z - pCoord.z;
+          if (Math.hypot(dx, dz) > 0.1) {
+            yaw = Math.atan2(dx, dz);
+          }
+        }
+        return {
+          pos: pCoord,
+          floorY: pCoord.y,
+          yaw: yaw,
+          pintu: pintuPt
+        };
+      }
+
+      // Jika belum ada titik pintu di graf rute, hitung posisi pintu masuk dari bounding box
+      if (hasBox) {
+        var floorY = box.min.y;
+
+        // Cari sisi terdekat dari posisi avatar ke bounding box
+        var dFront = Math.abs(avatarPos.z - box.max.z);
+        var dBack = Math.abs(avatarPos.z - box.min.z);
+        var dLeft = Math.abs(avatarPos.x - box.min.x);
+        var dRight = Math.abs(avatarPos.x - box.max.x);
+        var minD = Math.min(dFront, dBack, dLeft, dRight);
+
+        var spawnX = c.x;
+        var spawnZ = box.max.z - 0.8;
+
+        if (minD === dBack) {
+          spawnX = c.x;
+          spawnZ = box.min.z + 0.8;
+        } else if (minD === dLeft) {
+          spawnX = box.min.x + 0.8;
+          spawnZ = c.z;
+        } else if (minD === dRight) {
+          spawnX = box.max.x - 0.8;
+          spawnZ = c.z;
+        } else {
+          spawnX = c.x;
+          spawnZ = box.max.z - 0.8;
+        }
+
+        spawnX = Math.max(box.min.x + 0.5, Math.min(box.max.x - 0.5, spawnX));
+        spawnZ = Math.max(box.min.z + 0.5, Math.min(box.max.z - 0.5, spawnZ));
+
+        var yaw = Math.atan2(c.x - spawnX, c.z - spawnZ);
+        return {
+          pos: new THREE.Vector3(spawnX, floorY, spawnZ),
+          floorY: floorY,
+          yaw: yaw,
+          pintu: null
+        };
+      }
+
+      return null;
+    }
+
+    /** Memposisikan aktor ke pintu masuk gedung atau ruang */
+    function masukKeObjek(targetId, targetNode) {
+      var masukInfo = dapatkanPosisiPintuMasuk(targetId, targetNode);
+      if (!masukInfo) { return; }
+
+      // Posisikan aktor di pintu masuk
+      avatarPos.copy(masukInfo.pos);
+      currentFloorY = masukInfo.floorY;
+      avatarPos.y = currentFloorY;
+      avatarYaw = masukInfo.yaw;
+      avatarPitch = -0.05;
+
+      lastEntrancePos = avatarPos.clone();
+
+      avatarContainer.position.copy(avatarPos);
+      avatarContainer.rotation.y = avatarYaw;
+
+      var labelTipe = targetNode.tipe === 'ruang' ? 'Ruang' : 'Gedung';
+      var nama = targetNode.judul || labelTipe;
+      if (typeof opts.onToast === 'function') {
+        opts.onToast('Masuk ke ' + labelTipe.toLowerCase() + ' ' + nama + '. Anda berada di pintu masuk.');
+      }
+
+      if (typeof opts.onEnterObject === 'function') {
+        opts.onEnterObject(targetId, targetNode, masukInfo);
+      } else if (typeof opts.onInteract === 'function') {
+        opts.onInteract(targetId, targetNode);
+      }
+
+      // Sembunyikan popup sementara agar tidak langsung memicu lagi di frame yang sama
+      if (elEntryPopup) { elEntryPopup.hidden = true; }
+      interaksiAktif = null;
+    }
+
     /* ------------------------------------------------------------------
-     * Deteksi Interaksi (Pintu, Tangga, Lift, Barang, Ruang)
+     * Deteksi Interaksi & Pop-up Masuk (Pintu, Gedung, Ruang, Tangga, Lift)
      * ------------------------------------------------------------------ */
     var interaksiAktif = null;
 
@@ -586,8 +781,10 @@
       if (opts.graf && opts.graf.titik) {
         opts.graf.titik.forEach(function (pt) {
           if (pt.jenis === 'tangga' || pt.jenis === 'lift') {
-            var dist = Math.hypot(avatarPos.x - pt.worldPos.x, avatarPos.z - pt.worldPos.z);
-            if (dist < 1.4) {
+            var pCoord = pt.pos || pt.worldPos;
+            if (!pCoord) { return; }
+            var dist = Math.hypot(avatarPos.x - pCoord.x, avatarPos.z - pCoord.z);
+            if (dist < 1.6 && Math.abs(avatarPos.y - pCoord.y) < 1.8) {
               interaksiAktif = {
                 tipe: pt.jenis,
                 label: (pt.jenis === 'lift' ? 'Gunakan Lift' : 'Gunakan Tangga') + (pt.label ? ' (' + pt.label + ')' : ''),
@@ -598,46 +795,144 @@
         });
       }
 
-      // 2. Cek barang / pintu ruangan / informasi objek di dekat avatar
+      // 2. Cek apakah berada di dekat Gedung atau Ruang
       if (!interaksiAktif && stage.entries) {
-        var minDist = 2.2;
+        var calonTerbaik = null;
+        var jarakTerkecil = 999;
+
         stage.entries.forEach(function (entry, id) {
           var node = stage.nodeMap ? stage.nodeMap.get(id) : null;
           if (!node || !node.judul) { return; }
-          if (node.tipe === 'gedung' || node.tipe === 'lantai') { return; }
+          if (node.tipe !== 'ruang' && node.tipe !== 'gedung') { return; }
+
+          var box = stage.worldBox ? stage.worldBox(id) : new THREE.Box3().setFromObject(entry.body);
+          if (!box || box.isEmpty()) { return; }
+
+          // Periksa apakah avatar sudah berada jauh di dalam objek ini
+          var insideObj = (avatarPos.x >= box.min.x + 0.8 && avatarPos.x <= box.max.x - 0.8 &&
+                           avatarPos.z >= box.min.z + 0.8 && avatarPos.z <= box.max.z - 0.8 &&
+                           avatarPos.y >= box.min.y - 0.5 && avatarPos.y <= box.max.y + 0.5);
+
+          // Jarak horizontal dan vertikal
+          var distToBox = box.distanceToPoint(avatarPos);
+          var dy = Math.abs(avatarPos.y - box.min.y);
+
+          // Cek titik pintu khusus objek ini di graf
+          var pintuPt = cariPintuObjek(id);
+          var distToPintu = 999;
+          if (pintuPt) {
+            var pCoord = pintuPt.pos || pintuPt.worldPos;
+            if (pCoord) {
+              distToPintu = avatarPos.distanceTo(pCoord);
+            }
+          }
+
+          var threshold = (node.tipe === 'ruang') ? 3.5 : 5.0;
+          var isNearDoor = distToPintu < 4.0;
+          var isNearBox = distToBox < threshold && (node.tipe === 'gedung' ? dy < (box.max.y - box.min.y + 1.5) : dy < 2.5);
+
+          if ((isNearDoor || isNearBox) && !insideObj) {
+            var effectiveDist = Math.min(distToBox, distToPintu);
+            // Beri prioritas pada ruang dibandingkan gedung bila berada di dekat pintu ruangan
+            var bobot = (node.tipe === 'ruang') ? effectiveDist * 0.75 : effectiveDist;
+            if (bobot < jarakTerkecil) {
+              jarakTerkecil = bobot;
+              calonTerbaik = {
+                tipe: node.tipe,
+                id: id,
+                node: node,
+                pintu: pintuPt,
+                box: box
+              };
+            }
+          }
+        });
+
+        if (calonTerbaik) {
+          var isRuang = calonTerbaik.tipe === 'ruang';
+          var labelTipe = isRuang ? 'Ruangan' : 'Gedung';
+          var iconBadge = isRuang ? '🚪 Pintu Ruangan' : '🏢 Pintu Gedung';
+          interaksiAktif = {
+            tipe: 'masuk_objek',
+            id: calonTerbaik.id,
+            node: calonTerbaik.node,
+            label: 'Masuk ke ' + labelTipe + ' ' + calonTerbaik.node.judul,
+            badge: iconBadge,
+            title: calonTerbaik.node.judul,
+            desc: 'Klik tombol atau tekan [E] untuk masuk ke pintu masuk ' + labelTipe.toLowerCase() + '.',
+            btnText: 'Masuk ke ' + (isRuang ? 'Ruang' : 'Gedung')
+          };
+        }
+      }
+
+      // 3. Cek barang di dekat avatar
+      if (!interaksiAktif && stage.entries) {
+        var minBarangDist = 2.2;
+        stage.entries.forEach(function (entry, id) {
+          var node = stage.nodeMap ? stage.nodeMap.get(id) : null;
+          if (!node || !node.judul || node.tipe !== 'barang') { return; }
 
           var worldPos = new THREE.Vector3();
           entry.body.getWorldPosition(worldPos);
           var dist = avatarPos.distanceTo(worldPos);
-          if (dist < minDist) {
-            minDist = dist;
+          if (dist < minBarangDist) {
+            minBarangDist = dist;
             interaksiAktif = {
-              tipe: 'objek',
+              tipe: 'barang',
               id: id,
-              label: (node.tipe === 'ruang' ? 'Masuk ke ' : 'Lihat Info ') + node.judul,
+              label: 'Lihat Info ' + node.judul,
+              badge: '📦 Barang',
+              title: node.judul,
+              desc: 'Tekan [E] atau klik untuk melihat detail barang.',
+              btnText: 'Lihat Info',
               node: node
             };
           }
         });
       }
 
-      // Tampilkan ke HUD
-      if (interaksiAktif) {
-        elPromptText.textContent = interaksiAktif.label;
-        elPrompt.hidden = false;
-        elMBtnAct.hidden = false;
-        elMBtnAct.textContent = interaksiAktif.tipe === 'lift' ? 'Lift' : (interaksiAktif.tipe === 'tangga' ? 'Tangga' : 'Info (E)');
+      // Tampilkan atau sembunyikan popup ke HUD
+      perbaruiPopupInteraksi();
+    }
+
+    function perbaruiPopupInteraksi() {
+      if (!interaksiAktif) {
+        if (elEntryPopup) { elEntryPopup.hidden = true; }
+        if (elPrompt) { elPrompt.hidden = true; }
+        if (elMBtnAct) { elMBtnAct.hidden = true; }
+        return;
+      }
+
+      if (interaksiAktif.tipe === 'masuk_objek') {
+        if (elEntryBadge) { elEntryBadge.textContent = interaksiAktif.badge; }
+        if (elEntryTitle) { elEntryTitle.textContent = interaksiAktif.title; }
+        if (elEntryDesc) { elEntryDesc.textContent = interaksiAktif.desc; }
+        if (elEntryBtnText) { elEntryBtnText.textContent = interaksiAktif.btnText || 'Masuk Sekarang'; }
+        if (elEntryPopup) { elEntryPopup.hidden = false; }
+        if (elPrompt) { elPrompt.hidden = true; }
+        if (elMBtnAct) {
+          elMBtnAct.hidden = false;
+          elMBtnAct.textContent = 'Masuk (E)';
+        }
       } else {
-        elPrompt.hidden = true;
-        elMBtnAct.hidden = true;
+        if (elEntryPopup) { elEntryPopup.hidden = true; }
+        if (elPrompt) {
+          elPromptText.textContent = interaksiAktif.label;
+          elPrompt.hidden = false;
+        }
+        if (elMBtnAct) {
+          elMBtnAct.hidden = false;
+          elMBtnAct.textContent = interaksiAktif.tipe === 'lift' ? 'Lift' : (interaksiAktif.tipe === 'tangga' ? 'Tangga' : 'Info (E)');
+        }
       }
     }
 
     function lakukanInteraksi() {
       if (!interaksiAktif) { return; }
 
-      if (interaksiAktif.tipe === 'tangga' || interaksiAktif.tipe === 'lift') {
-        // Cari titik sambungan tangga/lift di lantai lain
+      if (interaksiAktif.tipe === 'masuk_objek') {
+        masukKeObjek(interaksiAktif.id, interaksiAktif.node);
+      } else if (interaksiAktif.tipe === 'tangga' || interaksiAktif.tipe === 'lift') {
         var pt = interaksiAktif.titik;
         var tetangga = opts.graf ? opts.graf.tetangga(pt.id) : [];
         var targetPt = null;
@@ -654,7 +949,7 @@
             opts.onTransitLantai(targetPt);
           }
         }
-      } else if (interaksiAktif.tipe === 'objek') {
+      } else if (interaksiAktif.tipe === 'barang') {
         if (typeof opts.onInteract === 'function') {
           opts.onInteract(interaksiAktif.id, interaksiAktif.node);
         }
@@ -871,11 +1166,9 @@
       hudEl.hidden = false;
       clock.start();
 
-      // Coba request pointer lock bila di desktop
-      if (window.innerWidth > 768) {
-        setTimeout(function () {
-          try { canvas.requestPointerLock(); } catch (e) { /* diabaikan */ }
-        }, 100);
+      // Mode kursor bebas: Kursor tetap aktif dan tidak dikunci
+      if (canvas) {
+        canvas.style.cursor = 'grab';
       }
 
       if (typeof opts.onActiveChange === 'function') {
@@ -890,6 +1183,10 @@
       hudEl.hidden = true;
       resetJoystick();
       touchLookId = null;
+      isDraggingMouse = false;
+
+      if (elEntryPopup) { elEntryPopup.hidden = true; }
+      if (canvas) { canvas.style.cursor = ''; }
 
       if (document.pointerLockElement === canvas) {
         try { document.exitPointerLock(); } catch (err) { /* diabaikan */ }
@@ -923,6 +1220,7 @@
       keluarJelajah: keluarJelajah,
       isActive: function () { return active; },
       setSetting: function (s) { Object.assign(setting, s || {}); },
+      setGraf: function (g) { opts.graf = g; },
       teleport: function (pos, yaw, floorY) {
         avatarPos.copy(pos);
         if (floorY != null) { currentFloorY = floorY; }

@@ -4,7 +4,7 @@
 /* Default: Mode Terang */
 :root,
 :root[data-theme="light"] {
-  --bg: #f1f3ef; --panel: #fafaf8; --fg: #1b231f; --muted: #5c6962; --line: #d6dbd3;
+  --bg: #f1f3ef; --panel: #fafaf8; --surface: #fafaf8; --fg: #1b231f; --muted: #5c6962; --line: #d6dbd3;
   --accent: #0d7a5e; --accent-fg: #ffffff; --accent-soft: #d9efe6; --danger: #b3362c; --warn-soft: #f6e7c8;
   --vp-bg: #e6eae4; --ground: #dde2da; --grid-a: #b3bdb2; --grid-b: #cbd2c9;
   --t-gedung: #b98a4a; --t-lantai: #5f9c78; --t-ruang: #4f86c2; --t-barang: #a55fbd; --t-area: #6f9d5c;
@@ -15,7 +15,7 @@
 
 /* Opsi Tambahan: Mode Gelap */
 :root[data-theme="dark"] {
-  --bg: #111513; --panel: #171c19; --fg: #e4ebe6; --muted: #96a59c; --line: #28302b;
+  --bg: #111513; --panel: #171c19; --surface: #171c19; --fg: #e4ebe6; --muted: #96a59c; --line: #28302b;
   --accent: #3fc79a; --accent-fg: #06261b; --accent-soft: #17352b; --danger: #ff8a7d; --warn-soft: #3a3118;
   --vp-bg: #0d110f; --ground: #141a16; --grid-a: #33403a; --grid-b: #212b25;
   --t-gedung: #d9a860; --t-lantai: #7cc79a; --t-ruang: #7aaee6; --t-barang: #c58ad9; --t-area: #8fc47a;
@@ -484,6 +484,112 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
+/* Pop-up Masuk Gedung / Ruangan di Mode Jelajah */
+.k3d-entry-popup {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  color: #ffffff;
+  padding: 14px 22px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 270px;
+  max-width: min(440px, 92vw);
+  pointer-events: auto;
+  z-index: 150;
+  animation: entryPopupIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes entryPopupIn {
+  from { opacity: 0; transform: translate(-50%, 12px) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+.k3d-entry-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(13, 122, 94, 0.28);
+  color: #3fc79a;
+  border: 1px solid rgba(63, 199, 154, 0.45);
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-bottom: 6px;
+}
+.k3d-entry-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 3px;
+  letter-spacing: 0.01em;
+}
+.k3d-entry-desc {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+  line-height: 1.35;
+}
+.k3d-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+.k3d-entry-btn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: 10px;
+  padding: 9px 22px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(13, 122, 94, 0.45);
+  transition: all 0.15s ease;
+}
+.k3d-entry-btn:hover {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(13, 122, 94, 0.6);
+}
+.k3d-entry-btn:active {
+  transform: translateY(1px);
+}
+.k3d-entry-btn kbd {
+  background: rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  margin-left: 2px;
+}
+@media (max-width: 768px) {
+  .k3d-entry-popup {
+    bottom: 140px;
+    padding: 10px 16px;
+    min-width: 230px;
+  }
+  .k3d-entry-title { font-size: 14px; }
+  .k3d-entry-btn { padding: 7px 16px; font-size: 12px; }
+}
+
 /* Tombol Keluar Cepat di Pojok Kanan Atas */
 .k3d-avatar-top-exit {
   position: absolute;
@@ -657,15 +763,21 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .quality-wrap {
   display: inline-flex;
   align-items: center;
+  vertical-align: middle;
 }
 .quality-select {
-  font-size: 12px;
-  padding: 5px 8px;
+  font-size: 13px;
+  padding: 5px 10px;
   cursor: pointer;
-  background: var(--surface);
+  background: var(--panel);
   border: 1px solid var(--line);
   color: var(--fg);
   border-radius: 6px;
+  width: auto;
+  min-width: 130px;
+  height: 31px;
+  line-height: 1.2;
+  box-sizing: border-box;
 }
 .quality-select:hover {
   border-color: var(--accent);

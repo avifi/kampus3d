@@ -22,6 +22,15 @@ $v = time();
         <span class="theme-icon" id="themeIcon" aria-hidden="true">🌙</span>
         <span class="theme-text" id="themeText">Mode Gelap</span>
       </button>
+      <div class="quality-wrap" title="Kualitas render & bayangan editor">
+        <label for="qualitySelect" class="sr-only">Kualitas</label>
+        <select class="btn quality-select" id="qualitySelect" aria-label="Kualitas render">
+          <option value="tinggi">Kualitas: Tinggi</option>
+          <option value="sedang">Kualitas: Sedang</option>
+          <option value="rendah">Kualitas: Rendah</option>
+        </select>
+      </div>
+      <span class="sep" aria-hidden="true"></span>
       <button class="btn" id="m-translate" type="button" aria-pressed="true">Pindah<kbd>W</kbd></button>
       <button class="btn" id="m-rotate" type="button" aria-pressed="false">Putar<kbd>E</kbd></button>
       <button class="btn" id="m-scale" type="button" aria-pressed="false">Skala<kbd>R</kbd></button>
@@ -42,12 +51,6 @@ $v = time();
         <button class="btn" id="btnKelolaUnit" type="button" title="Kelola wewenang gedung untuk admin unit">Wewenang Unit</button>
         <button class="btn" id="btnAvatarSetting" type="button" title="Pengaturan karakter mode jelajah publik">Pengaturan Karakter</button>
       <?php endif; ?>
-      <span class="sep" aria-hidden="true"></span>
-      <select class="btn quality-select" id="qualitySelect" title="Kualitas render & bayangan editor" aria-label="Kualitas render">
-        <option value="tinggi">Kualitas: Tinggi</option>
-        <option value="sedang">Kualitas: Sedang</option>
-        <option value="rendah">Kualitas: Rendah</option>
-      </select>
       <?php if ( ! empty($cfg['urlLogout'])): ?>
         <span class="sep" aria-hidden="true"></span>
         <a class="btn" href="<?php echo html_escape($cfg['urlLogout']); ?>" title="Keluar dari akun admin">Keluar (<?php echo html_escape($cfg['user']); ?>)</a>
