@@ -14,8 +14,9 @@
   // Jenis area outdoor. 'garis' = jalur dengan lebar, 'bidang' = poligon tertutup. tinggi = tebal lapisan (m).
   var AREA = {
     jalan:    { label: 'Jalan',    kind: 'garis',  color: 0x585e66, tinggi: 0.08 },
+    sungai:   { label: 'Sungai',   kind: 'garis',  color: 0x3ba682, tinggi: 0.02 },
     taman:    { label: 'Taman',    kind: 'bidang', color: 0x6fae6a, tinggi: 0.04 },
-    lapangan: { label: 'Lapangan', kind: 'bidang', color: 0xc07a52, tinggi: 0.05 },
+    lapangan: { label: 'Lapangan', kind: 'bidang', color: 0x76b852, tinggi: 0.05 },
     parkir:   { label: 'Parkir',   kind: 'bidang', color: 0x8b9099, tinggi: 0.06 }
   };
   // Tipe induk yang boleh untuk setiap tipe (sama dengan aturan di server).
@@ -37,9 +38,11 @@
 
   function createStage(canvas, stageEl, cfg) {
     cfg = cfg || {};
-    var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true }); // melempar galat bila WebGL tidak ada
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     var scene = new THREE.Scene();
     var camera = new THREE.PerspectiveCamera(50, 1, 0.1, 3000);
@@ -54,17 +57,34 @@
     orbit.maxDistance = 800;
     orbit.update();
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x6b756e, 0.95));
-    var sun = new THREE.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(30, 50, 20);
+    // Pencahayaan realistis: hemisphere langit-tanah & directional matahari dengan bayangan lembut
+    var hemiLight = new THREE.HemisphereLight(0xeef5fc, 0x5a6358, 0.85);
+    scene.add(hemiLight);
+
+    var sun = new THREE.DirectionalLight(0xfff5e6, 0.95);
+    sun.position.set(60, 95, 45);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 2048;
+    sun.shadow.mapSize.height = 2048;
+    sun.shadow.camera.near = 10;
+    sun.shadow.camera.far = 450;
+    var dSun = 150;
+    sun.shadow.camera.left = -dSun;
+    sun.shadow.camera.right = dSun;
+    sun.shadow.camera.top = dSun;
+    sun.shadow.camera.bottom = -dSun;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.02;
     scene.add(sun);
 
     var col = function (hex) { return new THREE.Color(hex).convertSRGBToLinear(); };
 
     /* ---------- tanah dan tema ---------- */
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(600, 600), new THREE.MeshBasicMaterial({ color: 0xdddddd }));
+    var groundMat = new THREE.MeshLambertMaterial({ color: 0xdddddd });
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.02;
+    ground.receiveShadow = true;
     scene.add(ground);
     var gridMinor = null;
     var gridMajor = null;
@@ -77,10 +97,12 @@
       [gridMinor, gridMajor].forEach(function (g) {
         if (g) { scene.remove(g); g.geometry.dispose(); g.material.dispose(); }
       });
-      gridMinor = new THREE.GridHelper(300, 300, col(v('--grid-b')), col(v('--grid-b')));
-      gridMajor = new THREE.GridHelper(300, 30, col(v('--grid-a')), col(v('--grid-a')));
+      gridMinor = new THREE.GridHelper(400, 400, col(v('--grid-b')), col(v('--grid-b')));
+      gridMajor = new THREE.GridHelper(400, 40, col(v('--grid-a')), col(v('--grid-a')));
       gridMinor.position.y = 0.005;
       gridMajor.position.y = 0.01;
+      gridMinor.receiveShadow = false;
+      gridMajor.receiveShadow = false;
       scene.add(gridMinor, gridMajor);
     }
     applyTheme();
@@ -109,21 +131,92 @@
       var c = box.getCenter(new THREE.Vector3());
       var s = box.getSize(new THREE.Vector3());
       gltfScene.position.set(-c.x, -box.min.y, -c.z);
+      gltfScene.traverse(function (node) {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
+      });
       var wrap = new THREE.Group();
       wrap.add(gltfScene);
       wrap.userData.size = s;
+      wrap.userData.gltfScene = gltfScene;
       return wrap;
     }
     var toError = function (err) {
       return err instanceof Error ? err : new Error((err && err.message) || 'Berkas model tidak dapat dibaca.');
     };
 
+    var instancedGroup = new THREE.Group();
+    instancedGroup.name = 'K3DInstancedGroup';
+    scene.add(instancedGroup);
+
     var stage = {
       THREE: THREE, renderer: renderer, scene: scene, camera: camera, orbit: orbit, root: root,
+      instancedGroup: instancedGroup,
       nodes: [], nodeMap: new Map(), entries: new Map(), library: new Map(),
-      selectedId: null, onError: null
+      selectedId: null, onError: null,
+      qualityLevel: 'tinggi',
+      lodDistance: 140,
+      enableLod: true
     };
     var modelCache = new Map(); // id pustaka -> Promise<Group>
+
+    /** Menerapkan ulang tema warna dan grid */
+    stage.applyTheme = applyTheme;
+
+    /** Mengatur tema terang/gelap ('light' atau 'dark') */
+    stage.setTheme = function (theme) {
+      theme = (theme === 'dark') ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+      try { localStorage.setItem('k3d_theme', theme); } catch (e) {}
+      applyTheme();
+      return theme;
+    };
+
+    /** Mendapatkan tema aktif saat ini ('light' atau 'dark') */
+    stage.getTheme = function () {
+      return document.documentElement.getAttribute('data-theme') || 'light';
+    };
+
+    /** Mengatur kualitas grafis (tinggi, sedang, rendah) */
+    stage.setQuality = function (level) {
+      level = level || 'sedang';
+      stage.qualityLevel = level;
+
+      if (level === 'rendah') {
+        renderer.shadowMap.enabled = false;
+        sun.castShadow = false;
+        renderer.setPixelRatio(1.0);
+        stage.lodDistance = 60;
+      } else if (level === 'sedang') {
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.BasicShadowMap;
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(1024, 1024);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.35));
+        stage.lodDistance = 100;
+      } else { // tinggi
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
+        stage.lodDistance = 160;
+      }
+
+      scene.traverse(function (obj) {
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material.forEach(function (m) { m.needsUpdate = true; });
+          } else {
+            obj.material.needsUpdate = true;
+          }
+        }
+      });
+      stage.resize();
+      try { localStorage.setItem('k3d_quality', level); } catch (e) { /* diabaikan */ }
+    };
 
     stage.setLibrary = function (list) {
       var next = new Map();
@@ -169,6 +262,8 @@
       });
       var mesh = new THREE.Mesh(g, mat);
       mesh.userData.own = true;
+      mesh.castShadow = (opacity >= 0.35);
+      mesh.receiveShadow = true;
       var lines = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col(t.color) }));
       lines.userData.own = true;
       lines.userData.noPick = true;
@@ -229,6 +324,7 @@
       });
       var mesh = new THREE.Mesh(geo, mat);
       mesh.userData.own = true;
+      mesh.receiveShadow = true;
       grp.add(mesh);
       return grp;
     }
@@ -290,22 +386,82 @@
       nodes.forEach(function (n) { stage.nodeMap.set(n.id, n); });
       disposeOwn(root);
       root.clear();
+      disposeOwn(instancedGroup);
+      instancedGroup.clear();
       stage.entries.clear();
+
+      // Hitung pemakaian model pustaka untuk instancing objek berulang (kursi, pohon, meja, dll)
+      var libCounts = new Map();
+      nodes.forEach(function (n) {
+        if (n.tipe === 'barang' && n.library_id != null && stage.library.has(n.library_id)) {
+          libCounts.set(n.library_id, (libCounts.get(n.library_id) || 0) + 1);
+        }
+      });
+
+      var instancedLibIds = new Set();
+      libCounts.forEach(function (count, libId) {
+        if (count >= 2) { instancedLibIds.add(libId); }
+      });
+
       nodes.forEach(function (n) {
         var group = new THREE.Group();
         group.userData.nodeId = n.id;
         var body = new THREE.Group();
         group.add(body);
-        var entry = { group: group, body: body };
+        var entry = { group: group, body: body, isInstanced: (n.library_id != null && instancedLibIds.has(n.library_id)) };
         stage.entries.set(n.id, entry);
         stage.applyTransform(n);
-        fillBody(entry, n);
+        if (!entry.isInstanced) {
+          fillBody(entry, n);
+        }
       });
       nodes.forEach(function (n) {
         var e = stage.entries.get(n.id);
         var p = n.parent_id != null ? stage.entries.get(n.parent_id) : null;
         (p ? p.group : root).add(e.group);
       });
+
+      // Bangun InstancedMesh untuk objek berulang dalam 1 draw call
+      if (instancedLibIds.size > 0) {
+        scene.updateMatrixWorld(true);
+        instancedLibIds.forEach(function (libId) {
+          var items = nodes.filter(function (n) { return n.tipe === 'barang' && n.library_id === libId; });
+          if (!items.length) { return; }
+          loadLibraryModel(libId).then(function (wrap) {
+            var gltfScene = wrap.userData.gltfScene;
+            if (!gltfScene) { return; }
+            var meshes = [];
+            gltfScene.traverse(function (o) {
+              if (o.isMesh && o.geometry) { meshes.push(o); }
+            });
+            if (!meshes.length) { return; }
+
+            scene.updateMatrixWorld(true);
+            meshes.forEach(function (srcMesh) {
+              var count = items.length;
+              var iMesh = new THREE.InstancedMesh(srcMesh.geometry, srcMesh.material, count);
+              iMesh.castShadow = true;
+              iMesh.receiveShadow = true;
+              iMesh.userData.instanceToNodeId = [];
+
+              items.forEach(function (itemNode, idx) {
+                var entry = stage.entries.get(itemNode.id);
+                if (entry) {
+                  entry.group.updateWorldMatrix(true, false);
+                  var m = new THREE.Matrix4().multiplyMatrices(entry.group.matrixWorld, srcMesh.matrix);
+                  iMesh.setMatrixAt(idx, m);
+                  iMesh.userData.instanceToNodeId[idx] = itemNode.id;
+                }
+              });
+              iMesh.instanceMatrix.needsUpdate = true;
+              instancedGroup.add(iMesh);
+            });
+          }).catch(function (err) {
+            console.warn('Gagal membuat instance untuk library #' + libId, err);
+          });
+        });
+      }
+
       if (stage.selectedId != null && !stage.entries.has(stage.selectedId)) { stage.selectedId = null; }
     };
 
@@ -345,18 +501,27 @@
       var r = canvas.getBoundingClientRect();
       ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
       ray.setFromCamera(ndc, camera);
-      var hits = ray.intersectObjects(root.children, true);
+      var targets = root.children.concat(instancedGroup.children);
+      var hits = ray.intersectObjects(targets, true);
       var ids = [];
       for (var i = 0; i < hits.length; i++) {
-        if (hits[i].object.userData.noPick) { continue; }
-        var o = hits[i].object;
-        while (o && o.userData.nodeId == null) { o = o.parent; }
-        if (o && ids.indexOf(o.userData.nodeId) === -1) { ids.push(o.userData.nodeId); }
+        var h = hits[i];
+        if (h.object.userData.noPick) { continue; }
+        var nodeId = null;
+        if (h.object.isInstancedMesh && h.object.userData.instanceToNodeId && h.instanceId !== undefined) {
+          nodeId = h.object.userData.instanceToNodeId[h.instanceId];
+        } else {
+          var o = h.object;
+          while (o && o.userData.nodeId == null) { o = o.parent; }
+          if (o) { nodeId = o.userData.nodeId; }
+        }
+        if (nodeId != null && ids.indexOf(nodeId) === -1) { ids.push(nodeId); }
       }
       if (!ids.length) { return []; }
       var first = ids[0];
       return [first].concat(ids.slice(1).filter(function (id) { return stage.isDescendant(id, first); }));
     };
+
 
     stage.setSelected = function (id) { stage.selectedId = id; };
 
@@ -368,6 +533,23 @@
       ray.setFromCamera(ndc, camera);
       var out = new THREE.Vector3();
       return ray.ray.intersectPlane(groundPlane, out) ? out : null;
+    };
+    /** Titik pada bidang datar setinggi y (dunia) di bawah titik layar, atau NULL. */
+    var anyPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    stage.planePoint = function (clientX, clientY, y) {
+      var r = canvas.getBoundingClientRect();
+      ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      anyPlane.constant = -(y || 0);
+      var out = new THREE.Vector3();
+      return ray.ray.intersectPlane(anyPlane, out) ? out : null;
+    };
+    /** Raycast ke daftar objek bebas (dipakai lapisan jalur). */
+    stage.raycast = function (clientX, clientY, objects) {
+      var r = canvas.getBoundingClientRect();
+      ndc.set(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      return ray.intersectObjects(objects, false);
     };
 
     /* Pegangan titik untuk menyunting bentuk area. Ukurannya dijaga tetap di layar. */
@@ -457,8 +639,37 @@
     var frameCallbacks = [];
     stage.onFrame = function (fn) { frameCallbacks.push(fn); };
     var tmpBox = new THREE.Box3();
+
+    var lastLodCheck = 0;
+    function updateLod(now) {
+      if (!stage.enableLod || (now - lastLodCheck < 250)) { return; }
+      lastLodCheck = now;
+      var camPos = camera.position;
+      var maxDistSq = stage.lodDistance * stage.lodDistance;
+
+      stage.entries.forEach(function (entry, id) {
+        var n = stage.nodeMap.get(id);
+        if (!n || n.tipe !== 'gedung') { return; }
+
+        var gPos = new THREE.Vector3();
+        entry.group.getWorldPosition(gPos);
+        var distSq = camPos.distanceToSquared(gPos);
+        var isSelected = (stage.selectedId != null && (stage.selectedId === id || stage.isDescendant(stage.selectedId, id)));
+        var shouldShowInterior = isSelected || (distSq < maxDistSq);
+
+        var children = (stage.nodes || []).filter(function (c) { return c.parent_id === id; });
+        children.forEach(function (cNode) {
+          var cEntry = stage.entries.get(cNode.id);
+          if (cEntry && cEntry.group) {
+            cEntry.group.visible = shouldShowInterior;
+          }
+        });
+      });
+    }
+
     function frame(now) {
       requestAnimationFrame(frame);
+      updateLod(now);
       if (tween) {
         var k = Math.min(1, (now - tween.t0) / tween.dur);
         var e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;

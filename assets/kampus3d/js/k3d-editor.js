@@ -41,6 +41,56 @@
 
   var role = cfg.role || 'superadmin';
   var izinGedung = cfg.izinGedung || 'semua';
+  var avatarSetting = null;
+
+  /* ---------- pengaturan kualitas grafis editor (tahap 5b) ---------- */
+  var qSelect = $('qualitySelect');
+  var savedQuality = 'tinggi';
+  try {
+    savedQuality = localStorage.getItem('k3d_quality') || (window.innerWidth <= 768 ? 'sedang' : 'tinggi');
+  } catch (e) {
+    savedQuality = 'tinggi';
+  }
+  stage.setQuality(savedQuality);
+  if (qSelect) {
+    qSelect.value = savedQuality;
+    qSelect.addEventListener('change', function () {
+      stage.setQuality(this.value);
+      setStatus('Kualitas render diubah ke: ' + this.value);
+    });
+  }
+
+  /* ---------- opsi tema terang / gelap ---------- */
+  var themeBtn = $('themeBtn');
+  var themeIcon = $('themeIcon');
+  var themeText = $('themeText');
+  function updateThemeUi(curTheme) {
+    if (!themeBtn) { return; }
+    var isDark = curTheme === 'dark';
+    if (themeIcon) { themeIcon.textContent = isDark ? '☀️' : '🌙'; }
+    if (themeText) { themeText.textContent = isDark ? 'Mode Terang' : 'Mode Gelap'; }
+    themeBtn.setAttribute('title', isDark ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap');
+  }
+  updateThemeUi(stage.getTheme());
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      var nextTheme = stage.getTheme() === 'dark' ? 'light' : 'dark';
+      stage.setTheme(nextTheme);
+      updateThemeUi(nextTheme);
+      setStatus('Tema diubah ke: ' + (nextTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'));
+    });
+  }
+
+  /* ---------- jalur petunjuk arah (tahap 4b) ---------- */
+  var jalur = { titik: [], ruas: [] };
+  var jalurRev = 0;
+  var selectedJalurPt = null;
+  var jalurAddMode = false;
+  var jalurConnectMode = false;
+  var jalurConnectFirst = null;
+  var dragJalur = null;
+  var grafLayer = (typeof K3D_JALUR !== 'undefined') ? K3D_JALUR.GrafLayer(stage) : null;
+  var curGraf = null;
 
   var newId = function () { return -(++tempSeq); };
   var byId = function (id) { return stage.nodeMap.get(id) || null; };
@@ -116,7 +166,7 @@
   }
 
   /* ---------- riwayat dan status simpan ---------- */
-  function snapshot() { return JSON.stringify({ n: nodes, d: deleted }); }
+  function snapshot() { return JSON.stringify({ n: nodes, d: deleted, j: jalur }); }
   function refreshDirty() {
     dirty = snapshot() !== savedSnap;
     var chip = $('saveChip');
@@ -139,15 +189,18 @@
     updateHistoryButtons();
     refreshDirty();
     renderLibrary();
+    renderJalur();
   }
   function loadSnapshot(s) {
     var o = JSON.parse(s);
     nodes = o.n;
     deleted = o.d;
+    if (o.j) { jalur = o.j; }
     rebuildScene();
     updateHistoryButtons();
     refreshDirty();
     renderLibrary();
+    renderJalur();
   }
   function undo() { if (hIdx > 0) { hIdx--; loadSnapshot(history[hIdx]); } }
   function redo() { if (hIdx < history.length - 1) { hIdx++; loadSnapshot(history[hIdx]); } }
@@ -165,6 +218,7 @@
 
   function select(id) {
     selectedId = id;
+    if (id != null) { deselectJalurPt(); }
     stage.setSelected(id);
     var e = id != null ? stage.entries.get(id) : null;
     var sn = id != null ? byId(id) : null;
@@ -190,6 +244,23 @@
         try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* diabaikan */ }
         updateHandles();
         fillPoints(an);
+        return;
+      }
+    }
+    // Periksa klik pada titik jalur
+    if (e.button === 0 && !drawing && !preview && grafLayer && $('jalurVisible') && $('jalurVisible').checked) {
+      var jId = grafLayer.pilih(e.clientX, e.clientY);
+      if (jId != null) {
+        down.onGizmo = true;
+        if (jalurConnectMode) {
+          handleJalurConnectClick(jId);
+          return;
+        }
+        selectJalurPt(jId);
+        dragJalur = { id: jId, moved: false };
+        stage.orbit.enabled = false;
+        try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* diabaikan */ }
+        return;
       }
     }
   });
@@ -201,6 +272,10 @@
     if (drawing) {
       var gp = stage.groundPoint(e.clientX, e.clientY);
       if (gp) { drawing.pts.push([snapV(gp.x), snapV(gp.z)]); updateHandles(); updateDrawNote(); }
+      return;
+    }
+    if (jalurAddMode) {
+      handleJalurCanvasAdd(e.clientX, e.clientY);
       return;
     }
     var chain = stage.pickChain(e.clientX, e.clientY);
@@ -1044,28 +1119,63 @@
   });
   canvas.addEventListener('dblclick', function () { if (drawing) { finishDraw(); } });
 
-  // seret titik area di kanvas
+  // seret titik area di kanvas atau titik jalur
   canvas.addEventListener('pointermove', function (e) {
-    if (!dragH) { return; }
-    var n = byId(selectedId);
-    var gp = stage.groundPoint(e.clientX, e.clientY);
-    if (!n || !n.geometri || !gp) { return; }
-    var p = [snapV(gp.x), snapV(gp.z)];
-    var cur = n.geometri.titik[dragH.idx];
-    if (cur && (cur[0] !== p[0] || cur[1] !== p[1])) {
-      n.geometri.titik[dragH.idx] = p;
-      dragH.moved = true;
-      stage.refresh(n);
-      updateHandles();
-      fillPoints(n);
+    if (dragH) {
+      var n = byId(selectedId);
+      var gp = stage.groundPoint(e.clientX, e.clientY);
+      if (!n || !n.geometri || !gp) { return; }
+      var p = [snapV(gp.x), snapV(gp.z)];
+      var cur = n.geometri.titik[dragH.idx];
+      if (cur && (cur[0] !== p[0] || cur[1] !== p[1])) {
+        n.geometri.titik[dragH.idx] = p;
+        dragH.moved = true;
+        stage.refresh(n);
+        updateHandles();
+        fillPoints(n);
+      }
+      return;
+    }
+    if (dragJalur) {
+      var pt = getJalurPt(dragJalur.id);
+      if (!pt) { return; }
+      var posDunia;
+      if (pt.objek_id != null) {
+        var eObj = stage.entries.get(pt.objek_id);
+        if (!eObj) { return; }
+        // Dapatkan bidang horizontal setinggi objek
+        var wPos = new THREE.Vector3();
+        eObj.group.getWorldPosition(wPos);
+        posDunia = stage.planePoint(e.clientX, e.clientY, wPos.y + pt.y);
+        if (!posDunia) { return; }
+        var loc = eObj.group.worldToLocal(posDunia);
+        pt.x = snapV(loc.x);
+        pt.z = snapV(loc.z);
+      } else {
+        posDunia = stage.groundPoint(e.clientX, e.clientY);
+        if (!posDunia) { return; }
+        pt.x = snapV(posDunia.x);
+        pt.z = snapV(posDunia.z);
+      }
+      dragJalur.moved = true;
+      renderJalur();
+      fillJalurProps(pt);
     }
   });
   window.addEventListener('pointerup', function () {
-    if (!dragH) { return; }
-    var moved = dragH.moved;
-    dragH = null;
-    stage.orbit.enabled = true;
-    if (moved) { commit(); }
+    if (dragH) {
+      var moved = dragH.moved;
+      dragH = null;
+      stage.orbit.enabled = true;
+      if (moved) { commit(); }
+      return;
+    }
+    if (dragJalur) {
+      var jMoved = dragJalur.moved;
+      dragJalur = null;
+      stage.orbit.enabled = true;
+      if (jMoved) { commit(); }
+    }
   });
 
   /* daftar titik di panel properti */
@@ -1187,6 +1297,341 @@
     stage.refresh(n);
     commit();
   });
+
+  /* ---------- fitur jalur petunjuk arah (tahap 4b) ---------- */
+  function getJalurPt(id) {
+    if (!jalur || !jalur.titik) { return null; }
+    for (var i = 0; i < jalur.titik.length; i++) {
+      if (jalur.titik[i].id === id) { return jalur.titik[i]; }
+    }
+    return null;
+  }
+
+  function renderJalur() {
+    if (!grafLayer) { return; }
+    var visible = $('jalurVisible') ? $('jalurVisible').checked : true;
+    grafLayer.tampil(visible);
+    if (!visible) { return; }
+    curGraf = K3D_JALUR.buatGraf(stage, jalur);
+    grafLayer.set(curGraf, selectedJalurPt, null);
+    var countEl = $('jalurCount');
+    if (countEl) {
+      countEl.textContent = '(' + jalur.titik.length + ' titik, ' + jalur.ruas.length + ' ruas)';
+    }
+  }
+
+  function deselectJalurPt() {
+    selectedJalurPt = null;
+    if ($('jalurPropsBox')) { $('jalurPropsBox').hidden = true; }
+    renderJalur();
+  }
+
+  function selectJalurPt(id) {
+    var pt = getJalurPt(id);
+    if (!pt) { deselectJalurPt(); return; }
+    // Batalkan seleksi objek gedung/ruang jika ada
+    selectedId = null;
+    stage.setSelected(null);
+    tc.detach();
+    renderTree();
+    renderOverlay();
+    $('propsEmpty').hidden = true;
+    $('propsForm').hidden = true;
+
+    selectedJalurPt = id;
+    renderJalur();
+    fillJalurProps(pt);
+  }
+
+  function fillJalurProps(pt) {
+    var box = $('jalurPropsBox');
+    if (!box) { return; }
+    box.hidden = false;
+    $('jpTag').textContent = 'Titik #' + pt.id + ' · ' + (K3D_JALUR.JENIS[pt.jenis] ? K3D_JALUR.JENIS[pt.jenis].label : 'Jalur');
+    $('jpJenis').value = pt.jenis;
+    $('jpLabel').value = pt.label || '';
+
+    // Tempelan
+    if (pt.objek_id != null) {
+      var o = byId(pt.objek_id);
+      $('jpTempel').textContent = o ? (K3D.labelOf(o) + ': ' + (o.judul || '#' + o.id)) : 'Objek #' + pt.objek_id;
+    } else {
+      $('jpTempel').textContent = 'Tanah kampus (outdoor)';
+    }
+
+    // Dropdown ruang/gedung
+    var rRow = $('jpRuangRow');
+    var rSel = $('jpRuang');
+    if (rRow && rSel) {
+      rRow.hidden = (pt.jenis !== 'pintu');
+      rSel.textContent = '';
+      var optNone = document.createElement('option');
+      optNone.value = '';
+      optNone.textContent = '(Tidak terhubung ke ruang)';
+      rSel.appendChild(optNone);
+      nodes.filter(function (x) { return x.tipe === 'ruang' || x.tipe === 'gedung'; }).forEach(function (x) {
+        var opt = document.createElement('option');
+        opt.value = String(x.id);
+        opt.textContent = K3D.labelOf(x) + ': ' + (x.judul || '(tanpa judul)');
+        rSel.appendChild(opt);
+      });
+      rSel.value = pt.ruang_id != null ? String(pt.ruang_id) : '';
+    }
+
+    // Koordinat
+    if (document.activeElement !== $('jp-x')) { $('jp-x').value = String(pt.x); }
+    if (document.activeElement !== $('jp-y')) { $('jp-y').value = String(pt.y); }
+    if (document.activeElement !== $('jp-z')) { $('jp-z').value = String(pt.z); }
+
+    // Info ruas
+    var kRuas = 0;
+    (jalur.ruas || []).forEach(function (r) {
+      if (r[0] === pt.id || r[1] === pt.id) { kRuas++; }
+    });
+    $('jpRuasInfo').textContent = kRuas > 0 ? ('Tersambung ke ' + kRuas + ' titik lain.') : 'Belum tersambung ke titik mana pun.';
+  }
+
+  // Update input properti titik jalur
+  if ($('jpJenis')) {
+    $('jpJenis').addEventListener('change', function (e) {
+      var pt = getJalurPt(selectedJalurPt);
+      if (!pt) { return; }
+      pt.jenis = e.target.value;
+      if (pt.jenis !== 'pintu') { pt.ruang_id = null; }
+      fillJalurProps(pt);
+      commit();
+    });
+  }
+  if ($('jpLabel')) {
+    $('jpLabel').addEventListener('input', function (e) {
+      var pt = getJalurPt(selectedJalurPt);
+      if (!pt) { return; }
+      pt.label = e.target.value;
+      refreshDirty();
+    });
+    $('jpLabel').addEventListener('change', commit);
+  }
+  if ($('jpRuang')) {
+    $('jpRuang').addEventListener('change', function (e) {
+      var pt = getJalurPt(selectedJalurPt);
+      if (!pt) { return; }
+      pt.ruang_id = e.target.value ? parseInt(e.target.value, 10) : null;
+      commit();
+    });
+  }
+  ['x', 'y', 'z'].forEach(function (axis) {
+    var inp = $('jp-' + axis);
+    if (!inp) { return; }
+    inp.addEventListener('input', function () {
+      var pt = getJalurPt(selectedJalurPt);
+      if (!pt) { return; }
+      var v = parseFloat(inp.value);
+      if (isFinite(v)) {
+        pt[axis] = v;
+        renderJalur();
+        refreshDirty();
+      }
+    });
+    inp.addEventListener('change', commit);
+  });
+
+  if ($('jpDelBtn')) {
+    $('jpDelBtn').addEventListener('click', function () {
+      if (selectedJalurPt == null) { return; }
+      var id = selectedJalurPt;
+      jalur.titik = jalur.titik.filter(function (t) { return t.id !== id; });
+      jalur.ruas = jalur.ruas.filter(function (r) { return r[0] !== id && r[1] !== id; });
+      deselectJalurPt();
+      commit();
+      setStatus('Titik jalur #' + id + ' dihapus.');
+    });
+  }
+
+  if ($('jpDisconnectBtn')) {
+    $('jpDisconnectBtn').addEventListener('click', function () {
+      if (selectedJalurPt == null) { return; }
+      var id = selectedJalurPt;
+      var jml = 0;
+      jalur.ruas = jalur.ruas.filter(function (r) {
+        if (r[0] === id || r[1] === id) { jml++; return false; }
+        return true;
+      });
+      commit();
+      fillJalurProps(getJalurPt(id));
+      setStatus('Semua ' + jml + ' ruas dari titik #' + id + ' diputus.');
+    });
+  }
+
+  if ($('jpConnectBtn')) {
+    $('jpConnectBtn').addEventListener('click', function () {
+      if (selectedJalurPt == null) { return; }
+      startJalurConnect(selectedJalurPt);
+    });
+  }
+
+  // Sambung titik ruas
+  function startJalurConnect(firstId) {
+    jalurConnectMode = true;
+    jalurConnectFirst = firstId;
+    if ($('jalurConnectBtn')) { $('jalurConnectBtn').classList.add('primary'); }
+    setStatus('Mode sambung aktif. Klik titik kedua pada kanvas untuk menyambungkan ruas jalan.');
+  }
+
+  function handleJalurConnectClick(targetPtId) {
+    if (!jalurConnectFirst) {
+      jalurConnectFirst = targetPtId;
+      selectJalurPt(targetPtId);
+      setStatus('Titik pertama dipilih (#' + targetPtId + '). Klik titik kedua untuk menyambung.');
+      return;
+    }
+    if (jalurConnectFirst === targetPtId) {
+      setStatus('Tidak dapat menyambung titik ke dirinya sendiri.', 'warn');
+      return;
+    }
+    // Cek apakah sudah ada ruas
+    var a = Math.min(jalurConnectFirst, targetPtId);
+    var b = Math.max(jalurConnectFirst, targetPtId);
+    var adaIdx = -1;
+    for (var i = 0; i < jalur.ruas.length; i++) {
+      var ra = Math.min(jalur.ruas[i][0], jalur.ruas[i][1]);
+      var rb = Math.max(jalur.ruas[i][0], jalur.ruas[i][1]);
+      if (ra === a && rb === b) { adaIdx = i; break; }
+    }
+
+    if (adaIdx >= 0) {
+      jalur.ruas.splice(adaIdx, 1);
+      setStatus('Ruas antara titik #' + a + ' dan #' + b + ' dihapus.');
+    } else {
+      jalur.ruas.push([a, b]);
+      setStatus('Ruas jalan dibuat antara titik #' + a + ' dan #' + b + '.');
+    }
+    jalurConnectFirst = targetPtId; // Tetap aktif untuk menyambung rantai jalur
+    selectJalurPt(targetPtId);
+    commit();
+  }
+
+  function stopJalurConnect() {
+    jalurConnectMode = false;
+    jalurConnectFirst = null;
+    if ($('jalurConnectBtn')) { $('jalurConnectBtn').classList.remove('primary'); }
+  }
+
+  // Tambah titik dari klik kanvas
+  function handleJalurCanvasAdd(clientX, clientY) {
+    var jenis = $('jalurAddJenis') ? $('jalurAddJenis').value : 'jalur';
+    var label = $('jalurAddLabel') ? $('jalurAddLabel').value.trim() : '';
+
+    // Cek apakah mengenai objek gedung/lantai/ruang
+    var chain = stage.pickChain(clientX, clientY);
+    var attachObj = null;
+    for (var i = 0; i < chain.length; i++) {
+      var cand = byId(chain[i]);
+      if (cand && (cand.tipe === 'ruang' || cand.tipe === 'lantai' || cand.tipe === 'gedung')) {
+        attachObj = cand;
+        break;
+      }
+    }
+
+    var pt;
+    if (attachObj) {
+      var eObj = stage.entries.get(attachObj.id);
+      var wPos = new THREE.Vector3();
+      eObj.group.getWorldPosition(wPos);
+      var pDunia = stage.planePoint(clientX, clientY, wPos.y);
+      if (!pDunia) { pDunia = stage.groundPoint(clientX, clientY); }
+      var loc = pDunia ? eObj.group.worldToLocal(pDunia) : new THREE.Vector3(0, 0, 0);
+      pt = {
+        id: newId(),
+        objek_id: attachObj.id,
+        jenis: jenis,
+        label: label,
+        ruang_id: (jenis === 'pintu' && attachObj.tipe === 'ruang') ? attachObj.id : null,
+        x: snapV(loc.x),
+        y: snapV(loc.y),
+        z: snapV(loc.z)
+      };
+    } else {
+      var gp = stage.groundPoint(clientX, clientY);
+      if (!gp) { return; }
+      pt = {
+        id: newId(),
+        objek_id: null,
+        jenis: jenis,
+        label: label,
+        ruang_id: null,
+        x: snapV(gp.x),
+        y: 0,
+        z: snapV(gp.z)
+      };
+    }
+
+    jalur.titik.push(pt);
+
+    // Jika sebelumnya ada titik terpilih, sambungkan otomatis ke titik baru
+    if (selectedJalurPt != null) {
+      jalur.ruas.push([selectedJalurPt, pt.id]);
+    }
+
+    selectJalurPt(pt.id);
+    commit();
+    setStatus('Titik jalur dibuat (' + (K3D_JALUR.JENIS[jenis] ? K3D_JALUR.JENIS[jenis].label : 'Jalur') + '). Seret untuk memindahkan posisinya.');
+  }
+
+  // Event listener tombol sidebar jalur
+  if ($('jalurVisible')) {
+    $('jalurVisible').addEventListener('change', renderJalur);
+  }
+
+  if ($('jalurAddBtn')) {
+    $('jalurAddBtn').addEventListener('click', function () {
+      jalurAddMode = !jalurAddMode;
+      $('jalurAddBtn').classList.toggle('primary', jalurAddMode);
+      $('jalurAddBtn').textContent = jalurAddMode ? 'Selesai menambah titik' : 'Tambah titik (klik kanvas)';
+      if (jalurAddMode) {
+        stopJalurConnect();
+        setStatus('Mode tambah titik aktif. Klik di jalan luar atau lantai ruangan untuk menaruh titik.');
+      } else {
+        setStatus('Mode tambah titik dimatikan.');
+      }
+    });
+  }
+
+  if ($('jalurConnectBtn')) {
+    $('jalurConnectBtn').addEventListener('click', function () {
+      if (jalurConnectMode) {
+        stopJalurConnect();
+        setStatus('Mode sambung ruas dimatikan.');
+      } else {
+        jalurAddMode = false;
+        if ($('jalurAddBtn')) {
+          $('jalurAddBtn').classList.remove('primary');
+          $('jalurAddBtn').textContent = 'Tambah titik (klik kanvas)';
+        }
+        startJalurConnect(selectedJalurPt);
+      }
+    });
+  }
+
+  // Import jalur dari jalan area outdoor (tahap 3)
+  if ($('jalurImportRoad')) {
+    $('jalurImportRoad').addEventListener('click', function () {
+      if (typeof K3D_JALUR === 'undefined') { return; }
+      var roads = nodes.filter(function (x) { return x.tipe === 'area' && x.subtipe === 'jalan'; });
+      if (!roads.length) {
+        setStatus('Belum ada area jalan outdoor yang digambar di kampus.', 'warn');
+        return;
+      }
+      var res = K3D_JALUR.dariJalan(nodes, jalur.titik, newId, 1.2);
+      if (!res.titik.length && !res.ruas.length) {
+        setStatus('Tidak ada titik baru dari jalan yang berhasil diimpor.', 'warn');
+        return;
+      }
+      jalur.titik = jalur.titik.concat(res.titik);
+      jalur.ruas = jalur.ruas.concat(res.ruas);
+      commit();
+      setStatus('Jalur berhasil diimpor dari ' + roads.length + ' area jalan: ' + res.titik.length + ' titik baru, ' + res.ruas.length + ' ruas baru (' + res.pakaiUlang + ' titik lama dipakai ulang).');
+    });
+  }
 
   /* ---------- pembatasan peran admin unit ---------- */
   if (role !== 'superadmin') {
@@ -1347,7 +1792,12 @@
     refreshDirty();
     setStatus('Menyimpan…');
     var fd = new FormData();
-    fd.append('payload', JSON.stringify({ objek: nodes, hapus: deleted }));
+    var payloadObj = { objek: nodes, hapus: deleted };
+    if (role === 'superadmin') {
+      payloadObj.jalur = jalur;
+      payloadObj.jalur_rev = jalurRev;
+    }
+    fd.append('payload', JSON.stringify(payloadObj));
     post(cfg.urlSimpan, fd).then(function (res) {
       if (!res.ok) {
         if (res.bentrok) {
@@ -1369,11 +1819,29 @@
         return c;
       });
       if (selectedId != null) { selectedId = pick(selectedId); }
+
+      // Update jalur dari server jika tersedia
+      if (res.jalur) {
+        jalur = res.jalur;
+        jalurRev = res.jalur_rev || 0;
+      } else if (res.peta_id && jalur && jalur.titik) {
+        // Petakan ID objek tempelan baru
+        jalur.titik.forEach(function (t) {
+          if (t.objek_id != null && map[t.objek_id] !== undefined) {
+            t.objek_id = map[t.objek_id];
+          }
+          if (t.ruang_id != null && map[t.ruang_id] !== undefined) {
+            t.ruang_id = map[t.ruang_id];
+          }
+        });
+      }
+
       deleted = [];
       history = [snapshot()];
       hIdx = 0;
       savedSnap = snapshot();
       rebuildScene();
+      renderJalur();
       library.forEach(function (l) { l.dipakai = localUse(l.id); });
       renderLibrary();
       setStatus('Tersimpan: ' + res.tambah + ' ditambah, ' + res.ubah + ' diperbarui, ' + res.hapus + ' dihapus. Riwayat urungkan dikosongkan.');
@@ -1522,6 +1990,84 @@
       });
   }
 
+  /* ---------- dialog pengaturan mode karakter / avatar (tahap 5a) ---------- */
+  var btnAvatarSetting = $('btnAvatarSetting');
+  var dlgAvatar = $('avatarSettingDlg');
+  if (btnAvatarSetting && dlgAvatar) {
+    btnAvatarSetting.addEventListener('click', function () {
+      // 1. Isi opsi select library
+      var selLib = $('setAvatarLib');
+      selLib.innerHTML = '<option value="">[Bawaan] Stylized Humanoid Mannequin</option>';
+      library.forEach(function (l) {
+        var opt = document.createElement('option');
+        opt.value = String(l.id);
+        opt.textContent = l.nama + ' (' + l.kategori + ')';
+        selLib.appendChild(opt);
+      });
+
+      var s = avatarSetting || {};
+      selLib.value = s.avatar_lib_id ? String(s.avatar_lib_id) : '';
+
+      var speed = (s.avatar_speed != null) ? s.avatar_speed : 3.5;
+      $('setAvatarSpeed').value = speed;
+      $('valAvatarSpeed').textContent = Number(speed).toFixed(1) + ' m/s';
+
+      var runSpeed = (s.avatar_run_speed != null) ? s.avatar_run_speed : 6.5;
+      $('setAvatarRunSpeed').value = runSpeed;
+      $('valAvatarRunSpeed').textContent = Number(runSpeed).toFixed(1) + ' m/s';
+
+      var camHeight = (s.avatar_cam_height != null) ? s.avatar_cam_height : 1.6;
+      $('setAvatarCamHeight').value = camHeight;
+      $('valAvatarCamHeight').textContent = Number(camHeight).toFixed(2) + ' m';
+
+      if (typeof dlgAvatar.showModal === 'function') {
+        dlgAvatar.showModal();
+      } else {
+        dlgAvatar.setAttribute('open', '');
+      }
+    });
+
+    $('setAvatarSpeed').addEventListener('input', function () {
+      $('valAvatarSpeed').textContent = Number(this.value).toFixed(1) + ' m/s';
+    });
+    $('setAvatarRunSpeed').addEventListener('input', function () {
+      $('valAvatarRunSpeed').textContent = Number(this.value).toFixed(1) + ' m/s';
+    });
+    $('setAvatarCamHeight').addEventListener('input', function () {
+      $('valAvatarCamHeight').textContent = Number(this.value).toFixed(2) + ' m';
+    });
+
+    $('avatarSettingClose').addEventListener('click', function () {
+      if (typeof dlgAvatar.close === 'function') { dlgAvatar.close(); }
+      else { dlgAvatar.removeAttribute('open'); }
+    });
+
+    $('avatarSettingSave').addEventListener('click', function () {
+      var btn = $('avatarSettingSave');
+      btn.disabled = true;
+      btn.textContent = 'Menyimpan…';
+
+      var fd = new FormData();
+      fd.append('avatar_lib_id', $('setAvatarLib').value);
+      fd.append('avatar_speed', $('setAvatarSpeed').value);
+      fd.append('avatar_run_speed', $('setAvatarRunSpeed').value);
+      fd.append('avatar_cam_height', $('setAvatarCamHeight').value);
+
+      post(cfg.urlAvatarSetting, fd).then(function (res) {
+        if (!res.ok) { throw new Error(res.pesan || 'Gagal menyimpan pengaturan'); }
+        avatarSetting = res.avatar || {};
+        setStatus('Pengaturan mode karakter berhasil disimpan.');
+        if (typeof dlgAvatar.close === 'function') { dlgAvatar.close(); }
+        else { dlgAvatar.removeAttribute('open'); }
+      }).catch(function (err) {
+        setStatus('Gagal menyimpan: ' + ((err && err.message) || err), 'warn');
+      }).then(function () {
+        btn.disabled = false;
+        btn.textContent = 'Simpan Pengaturan';
+      });
+    });
+  }
+
   /* ---------- mulai ---------- */
   applySnap();
   setMode('translate');
@@ -1531,8 +2077,12 @@
     stage.setLibrary(library);
     renderLibrary();
     nodes = d.objek || [];
+    jalur = d.jalur || { titik: [], ruas: [] };
+    jalurRev = d.jalur_rev || 0;
+    avatarSetting = d.avatar || {};
     deleted = [];
     rebuildScene();
+    renderJalur();
     stage.home(true);
     history = [snapshot()];
     hIdx = 0;
@@ -1547,3 +2097,4 @@
     setStatus('Data gagal dimuat: ' + ((err && err.message) || err), 'warn');
   });
 })();
+

@@ -98,7 +98,51 @@ CREATE TABLE IF NOT EXISTS `k3d_user_unit` (
   CONSTRAINT `fk_k3d_user_unit_objek` FOREIGN KEY (`objek_id`) REFERENCES `k3d_objek` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Petunjuk arah (tahap 4b): titik jalur dan ruas penghubungnya.
+-- x/y/z relatif terhadap objek tempelan (objek_id); NULL = tanah kampus.
+CREATE TABLE IF NOT EXISTS `k3d_jalur_titik` (
+  `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `objek_id`  INT UNSIGNED NULL,
+  `jenis`     ENUM('jalur','gerbang','pintu','tangga','lift') NOT NULL DEFAULT 'jalur',
+  `label`     VARCHAR(80) NOT NULL DEFAULT '',
+  `ruang_id`  INT UNSIGNED NULL,
+  `x`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+  `y`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+  `z`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  KEY `idx_objek` (`objek_id`),
+  KEY `idx_ruang` (`ruang_id`),
+  KEY `idx_jenis` (`jenis`),
+  CONSTRAINT `fk_k3d_jt_objek` FOREIGN KEY (`objek_id`) REFERENCES `k3d_objek` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_k3d_jt_ruang` FOREIGN KEY (`ruang_id`) REFERENCES `k3d_objek` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `k3d_jalur_ruas` (
+  `id`       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `titik_a`  INT UNSIGNED NOT NULL,
+  `titik_b`  INT UNSIGNED NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_ab` (`titik_a`, `titik_b`),
+  KEY `idx_b` (`titik_b`),
+  CONSTRAINT `fk_k3d_jr_a` FOREIGN KEY (`titik_a`) REFERENCES `k3d_jalur_titik` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_k3d_jr_b` FOREIGN KEY (`titik_b`) REFERENCES `k3d_jalur_titik` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Pengaturan modul Kampus 3D (tahap 5a: mode karakter)
+CREATE TABLE IF NOT EXISTS `k3d_setting` (
+  `kunci` VARCHAR(60) NOT NULL,
+  `nilai` TEXT NOT NULL,
+  PRIMARY KEY (`kunci`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO `k3d_setting` (`kunci`, `nilai`) VALUES
+('avatar_lib_id', ''),
+('avatar_speed', '3.5'),
+('avatar_run_speed', '6.5'),
+('avatar_cam_height', '1.6');
+
 -- Akun admin bawaan (password: admin123)
 INSERT IGNORE INTO `k3d_user` (`username`, `password`, `nama_lengkap`, `role`, `dibuat_pada`)
 VALUES ('admin', '$2y$10$TKh8H1.PfQx37YgCzwiKb.KjNyWgaHb9cbcoQgdIVFlYg7B77UdFm', 'Administrator Kampus', 'superadmin', NOW());
+
 

@@ -1,12 +1,14 @@
 <?php defined('BASEPATH') OR exit('No direct script access allowed');
 $a = $cfg['assetBase'];
+$v = time();
 ?><!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Editor Kampus 3D</title>
-<link rel="stylesheet" href="<?php echo $a; ?>css/kampus3d.css">
+<script>(function(){var t='light';try{t=localStorage.getItem('k3d_theme')||'light';}catch(e){}document.documentElement.setAttribute('data-theme',t);})();</script>
+<link rel="stylesheet" href="<?php echo $a; ?>css/kampus3d.css?v=<?php echo $v; ?>">
 </head>
 <body>
 <div class="app">
@@ -16,6 +18,10 @@ $a = $cfg['assetBase'];
       <p>Tambah, atur posisi, dan terbitkan gedung, lantai, ruang, dan barang</p>
     </div>
     <div class="tools" role="toolbar" aria-label="Alat editor">
+      <button class="btn btn-theme" id="themeBtn" type="button" title="Ganti mode tema (Terang/Gelap)" aria-label="Ganti mode tema">
+        <span class="theme-icon" id="themeIcon" aria-hidden="true">🌙</span>
+        <span class="theme-text" id="themeText">Mode Gelap</span>
+      </button>
       <button class="btn" id="m-translate" type="button" aria-pressed="true">Pindah<kbd>W</kbd></button>
       <button class="btn" id="m-rotate" type="button" aria-pressed="false">Putar<kbd>E</kbd></button>
       <button class="btn" id="m-scale" type="button" aria-pressed="false">Skala<kbd>R</kbd></button>
@@ -34,7 +40,14 @@ $a = $cfg['assetBase'];
       <span class="role-badge <?php echo html_escape($cfg['role']); ?>"><?php echo $cfg['role'] === 'superadmin' ? 'Superadmin' : 'Admin Unit'; ?></span>
       <?php if ($cfg['role'] === 'superadmin'): ?>
         <button class="btn" id="btnKelolaUnit" type="button" title="Kelola wewenang gedung untuk admin unit">Wewenang Unit</button>
+        <button class="btn" id="btnAvatarSetting" type="button" title="Pengaturan karakter mode jelajah publik">Pengaturan Karakter</button>
       <?php endif; ?>
+      <span class="sep" aria-hidden="true"></span>
+      <select class="btn quality-select" id="qualitySelect" title="Kualitas render & bayangan editor" aria-label="Kualitas render">
+        <option value="tinggi">Kualitas: Tinggi</option>
+        <option value="sedang">Kualitas: Sedang</option>
+        <option value="rendah">Kualitas: Rendah</option>
+      </select>
       <?php if ( ! empty($cfg['urlLogout'])): ?>
         <span class="sep" aria-hidden="true"></span>
         <a class="btn" href="<?php echo html_escape($cfg['urlLogout']); ?>" title="Keluar dari akun admin">Keluar (<?php echo html_escape($cfg['user']); ?>)</a>
@@ -72,6 +85,7 @@ $a = $cfg['assetBase'];
         <label for="areaType">Jenis</label>
         <select id="areaType">
           <option value="jalan">Jalan</option>
+          <option value="sungai">Sungai</option>
           <option value="taman">Taman</option>
           <option value="lapangan">Lapangan</option>
           <option value="parkir">Parkir</option>
@@ -83,8 +97,36 @@ $a = $cfg['assetBase'];
         <button class="btn" id="areaUndoPt" type="button">Hapus titik terakhir</button>
         <button class="btn" id="areaCancel" type="button">Batal</button>
       </div>
-      <p class="note" id="areaNote">Klik "Gambar area", lalu klik di tanah untuk menaruh titik. Jalan butuh minimal 2 titik, taman, lapangan, dan parkir minimal 3 titik. Selesai dengan tombol, Enter, atau klik dua kali.</p>
+      <p class="note" id="areaNote">Klik "Gambar area", lalu klik di tanah untuk menaruh titik. Jalan dan sungai butuh minimal 2 titik, taman, lapangan, dan parkir minimal 3 titik. Selesai dengan tombol, Enter, atau klik dua kali.</p>
     </section>
+    <?php if ($cfg['role'] === 'superadmin'): ?>
+    <section>
+      <h2 class="h">Jalur petunjuk arah <span id="jalurCount"></span></h2>
+      <div class="row" style="margin-bottom:8px;">
+        <label class="check"><input type="checkbox" id="jalurVisible" checked> Tampilkan jalur</label>
+        <button class="btn" id="jalurImportRoad" type="button" title="Otomatis buat titik dan ruas mengikuti garis tengah area jalan tahap 3">Import dari jalan</button>
+      </div>
+      <div class="field">
+        <label for="jalurAddJenis">Jenis titik baru</label>
+        <select id="jalurAddJenis">
+          <option value="jalur">Titik jalur umum</option>
+          <option value="gerbang">Gerbang / Titik awal</option>
+          <option value="pintu">Pintu masuk gedung / ruang</option>
+          <option value="tangga">Tangga antar-lantai</option>
+          <option value="lift">Lift antar-lantai</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="jalurAddLabel">Label titik (opsional)</label>
+        <input id="jalurAddLabel" placeholder="Contoh: Gerbang Utama / Pintu Rektorat" maxlength="80" autocomplete="off">
+      </div>
+      <div class="row">
+        <button class="btn primary" id="jalurAddBtn" type="button">Tambah titik (klik kanvas)</button>
+        <button class="btn" id="jalurConnectBtn" type="button">Hubungkan 2 titik</button>
+      </div>
+      <p class="note" id="jalurHint">Aktifkan "Tambah titik" lalu klik di jalan, pintu gedung, atau koridor lantai untuk menaruh titik rute. Klik dua titik untuk menyambungnya dengan ruas jalan.</p>
+    </section>
+    <?php endif; ?>
     <section>
       <h2 class="h">Library model <span id="libCount"></span></h2>
       <div class="field">
@@ -171,6 +213,7 @@ $a = $cfg['assetBase'];
           <label for="f-subtipe">Jenis</label>
           <select id="f-subtipe">
             <option value="jalan">Jalan</option>
+            <option value="sungai">Sungai</option>
             <option value="taman">Taman</option>
             <option value="lapangan">Lapangan</option>
             <option value="parkir">Parkir</option>
@@ -220,6 +263,49 @@ $a = $cfg['assetBase'];
         <p class="note">Berderet: salinan ke-2, 3, dan seterusnya digeser sejauh jarak tersebut (meter, searah sumbu induk). Jarak X kosong berarti otomatis selebar objek.</p>
       </fieldset>
     </div>
+
+    <!-- Properti Titik Jalur (tahap 4b) -->
+    <div id="jalurPropsBox" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span class="tag" id="jpTag">Titik Jalur</span>
+        <button class="btn danger" id="jpDelBtn" type="button" style="padding:2px 8px; font-size:12px;">Hapus Titik</button>
+      </div>
+      <div class="field">
+        <label for="jpJenis">Jenis titik</label>
+        <select id="jpJenis">
+          <option value="jalur">Titik jalur umum</option>
+          <option value="gerbang">Gerbang / Titik awal</option>
+          <option value="pintu">Pintu masuk gedung / ruang</option>
+          <option value="tangga">Tangga antar-lantai</option>
+          <option value="lift">Lift antar-lantai</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="jpLabel">Label nama titik</label>
+        <input id="jpLabel" maxlength="80" autocomplete="off" placeholder="Nama titik">
+      </div>
+      <div class="field" id="jpRuangRow">
+        <label for="jpRuang">Menuju ke Ruang / Gedung</label>
+        <select id="jpRuang"></select>
+      </div>
+      <div class="field">
+        <span class="lbl">Menempel pada</span>
+        <div class="mono" id="jpTempel">Tanah kampus</div>
+      </div>
+      <fieldset>
+        <legend>Posisi lokal (relatif ke tempelan)</legend>
+        <div class="xyz" id="jpPos">
+          <label><span>X</span><input class="num" id="jp-x" type="number" step="0.5"></label>
+          <label><span>Y</span><input class="num" id="jp-y" type="number" step="0.5"></label>
+          <label><span>Z</span><input class="num" id="jp-z" type="number" step="0.5"></label>
+        </div>
+      </fieldset>
+      <div class="actions">
+        <button class="btn" id="jpConnectBtn" type="button">Sambung ke titik lain</button>
+        <button class="btn" id="jpDisconnectBtn" type="button">Putus semua ruas titik ini</button>
+      </div>
+      <p class="note" id="jpRuasInfo" style="margin-top:8px;"></p>
+    </div>
   </aside>
 </div>
 
@@ -232,7 +318,47 @@ $a = $cfg['assetBase'];
     <button class="btn" id="userUnitClose" type="button">Tutup</button>
   </div>
 </dialog>
+
+<dialog id="avatarSettingDlg" class="qr-dlg dialog-avatar-setting" style="text-align:left;">
+  <h2 style="font-size:16px; margin-bottom:4px;">Pengaturan Mode Karakter (Jelajah)</h2>
+  <p class="note" style="margin-bottom:14px;">Atur model 3D karakter, kecepatan jalan/lari, dan tinggi pandangan kamera untuk mode jelajah publik.</p>
+  <form id="avatarSettingForm" method="dialog">
+    <div class="field">
+      <label for="setAvatarLib">Model Karakter 3D (.glb)</label>
+      <select id="setAvatarLib">
+        <option value="">[Bawaan] Stylized Humanoid Mannequin</option>
+      </select>
+      <p class="note" style="margin-top:4px; font-size:11px;">Model .glb dengan animasi idle & walk dapat diunggah lewat tab Pustaka.</p>
+    </div>
+    <div class="field">
+      <label for="setAvatarSpeed">Kecepatan Jalan (m/s)</label>
+      <div class="setting-slider-row">
+        <input type="range" id="setAvatarSpeed" min="1.0" max="10.0" step="0.1" value="3.5">
+        <span class="setting-slider-val" id="valAvatarSpeed">3.5 m/s</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="setAvatarRunSpeed">Kecepatan Lari (Shift) (m/s)</label>
+      <div class="setting-slider-row">
+        <input type="range" id="setAvatarRunSpeed" min="2.0" max="15.0" step="0.1" value="6.5">
+        <span class="setting-slider-val" id="valAvatarRunSpeed">6.5 m/s</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="setAvatarCamHeight">Tinggi Pandangan / Kamera (meter)</label>
+      <div class="setting-slider-row">
+        <input type="range" id="setAvatarCamHeight" min="1.0" max="2.5" step="0.05" value="1.6">
+        <span class="setting-slider-val" id="valAvatarCamHeight">1.60 m</span>
+      </div>
+    </div>
+    <div class="row" style="justify-content:flex-end; gap:8px; margin-top:16px;">
+      <button class="btn" id="avatarSettingClose" type="button">Batal</button>
+      <button class="btn primary" id="avatarSettingSave" type="button">Simpan Pengaturan</button>
+    </div>
+  </form>
+</dialog>
 <?php endif; ?>
+
 
 <script>window.K3D_CONFIG = <?php echo json_encode($cfg, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP); ?>;</script>
 <script src="<?php echo $a; ?>vendor/three.min.js"></script>
@@ -240,8 +366,9 @@ $a = $cfg['assetBase'];
 <script src="<?php echo $a; ?>vendor/TransformControls.js"></script>
 <script src="<?php echo $a; ?>vendor/GLTFLoader.js"></script>
 <script src="<?php echo $a; ?>vendor/DRACOLoader.js"></script>
-<script src="<?php echo $a; ?>js/k3d-core.js"></script>
-<script src="<?php echo $a; ?>js/k3d-qr.js"></script>
-<script src="<?php echo $a; ?>js/k3d-editor.js"></script>
+<script src="<?php echo $a; ?>js/k3d-core.js?v=<?php echo $v; ?>"></script>
+<script src="<?php echo $a; ?>js/k3d-jalur.js?v=<?php echo $v; ?>"></script>
+<script src="<?php echo $a; ?>js/k3d-qr.js?v=<?php echo $v; ?>"></script>
+<script src="<?php echo $a; ?>js/k3d-editor.js?v=<?php echo $v; ?>"></script>
 </body>
 </html>

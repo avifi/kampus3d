@@ -24,3 +24,9 @@ $config['k3d_upload_url'] = 'uploads/kampus3d/models/';
 
 // Ukuran maksimum satu berkas model (megabyte). Sesuaikan juga upload_max_filesize dan post_max_size di php.ini.
 $config['k3d_max_mb'] = 25;
+
+// Konfigurasi bawaan mode karakter (tahap 5a)
+$config['k3d_avatar_speed'] = 3.5;       // kecepatan jalan (m/s)
+$config['k3d_avatar_run_speed'] = 6.5;   // kecepatan lari (m/s)
+$config['k3d_avatar_cam_height'] = 1.6;  // tinggi pandangan/kamera (meter)
+

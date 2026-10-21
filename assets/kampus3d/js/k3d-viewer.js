@@ -19,6 +19,55 @@
 
   var nodes = [];
   var selectedId = null;
+  var rawJalur = null;
+  var graf = null;
+  var ruteLayer = (typeof K3D_JALUR !== 'undefined') ? K3D_JALUR.RuteLayer(stage) : null;
+  var curRouteTargetId = null;
+  var avatarSetting = null;
+  var avatarCtrl = null;
+
+  /* ---------- pengaturan kualitas grafis & bayangan (tahap 5b) ---------- */
+  var qSelect = $('qualitySelect');
+  var savedQuality = 'tinggi';
+  try {
+    savedQuality = localStorage.getItem('k3d_quality') || (window.innerWidth <= 768 ? 'sedang' : 'tinggi');
+  } catch (e) {
+    savedQuality = window.innerWidth <= 768 ? 'sedang' : 'tinggi';
+  }
+  stage.setQuality(savedQuality);
+  if (qSelect) {
+    qSelect.value = savedQuality;
+    qSelect.addEventListener('change', function () {
+      stage.setQuality(this.value);
+      var labels = {
+        tinggi: 'Kualitas Tinggi (Bayangan Halus)',
+        sedang: 'Kualitas Sedang',
+        rendah: 'Kualitas Rendah (Cepat / HP Lama)'
+      };
+      setStatus('Kualitas grafis diubah ke: ' + (labels[this.value] || this.value));
+    });
+  }
+
+  /* ---------- opsi tema terang / gelap ---------- */
+  var themeBtn = $('themeBtn');
+  var themeIcon = $('themeIcon');
+  var themeText = $('themeText');
+  function updateThemeUi(curTheme) {
+    if (!themeBtn) { return; }
+    var isDark = curTheme === 'dark';
+    if (themeIcon) { themeIcon.textContent = isDark ? '☀️' : '🌙'; }
+    if (themeText) { themeText.textContent = isDark ? 'Mode Terang' : 'Mode Gelap'; }
+    themeBtn.setAttribute('title', isDark ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap');
+  }
+  updateThemeUi(stage.getTheme());
+  if (themeBtn) {
+    themeBtn.addEventListener('click', function () {
+      var nextTheme = stage.getTheme() === 'dark' ? 'light' : 'dark';
+      stage.setTheme(nextTheme);
+      updateThemeUi(nextTheme);
+      setStatus('Tema diubah ke: ' + (nextTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'));
+    });
+  }
 
   /* ---------- pesan ---------- */
   var stTimer = 0;
@@ -45,6 +94,55 @@
     return parts.join(' › ');
   }
 
+  function rebuildGraf() {
+    if (typeof K3D_JALUR !== 'undefined' && rawJalur) {
+      graf = K3D_JALUR.buatGraf(stage, rawJalur);
+    }
+    initAvatar();
+  }
+
+  function initAvatar() {
+    if (typeof K3D_AVATAR === 'undefined') { return; }
+    if (avatarCtrl) {
+      avatarCtrl.setSetting(avatarSetting);
+      return;
+    }
+    avatarCtrl = K3D_AVATAR.buatAvatarController(stage, {
+      avatarSetting: avatarSetting,
+      container: stageEl,
+      graf: graf,
+      onToast: function (m) { setStatus(m); },
+      onInteract: function (id, node) { select(id, { fly: false }); },
+      onTransitLantai: function (pt) {
+        setStatus('Berpindah lantai via ' + (pt.jenis === 'lift' ? 'Lift' : 'Tangga') + ' (' + (pt.label || 'Lantai') + ')');
+        if (pt.ruangId) { select(pt.ruangId, { fly: false }); }
+      },
+      onActiveChange: function (isActive) {
+        var btn = $('exploreBtn');
+        if (btn) {
+          btn.classList.toggle('primary', isActive);
+          btn.textContent = isActive ? 'Keluar Mode Jelajah' : 'Jelajah Kampus';
+          btn.setAttribute('title', isActive ? 'Kembali ke mode orbit seluruh kampus' : 'Masuk ke mode karakter orang ketiga / pertama');
+        }
+        if (isActive) {
+          $('card').hidden = true;
+          $('tip').hidden = true;
+        }
+      },
+      onExit: function (goHome) {
+        if (goHome) {
+          select(null);
+          hideDirections();
+          resetAllFloors();
+          if ($('floorPanel')) { $('floorPanel').hidden = true; }
+          setStatus('Kembali ke mode orbit seluruh kampus.');
+        } else {
+          setStatus('Keluar dari mode jelajah.');
+        }
+      }
+    });
+  }
+
   function load() {
     $('loading').hidden = false;
     $('loading').textContent = 'Memuat data kampus…';
@@ -57,7 +155,10 @@
         if (!d || !d.ok) { throw new Error('Data tidak valid'); }
         stage.setLibrary(d.library || []);
         nodes = d.objek || [];
+        rawJalur = d.jalur || null;
+        avatarSetting = d.avatar || {};
         stage.rebuild(nodes);
+        rebuildGraf();
         $('loading').hidden = true;
         renderBrowse();
         if (!nodes.length) {
@@ -76,6 +177,9 @@
   /* ---------- pemilihan ---------- */
   function select(id, opts) {
     opts = opts || {};
+    if (opts.fly && avatarCtrl && avatarCtrl.isActive()) {
+      avatarCtrl.keluarJelajah(false);
+    }
     selectedId = id;
     stage.setSelected(id);
     var n = id != null ? byId(id) : null;
@@ -139,6 +243,44 @@
     });
   });
 
+  $('cardExplore').addEventListener('click', function () {
+    if (selectedId == null) { return; }
+    initAvatar();
+    var objId = selectedId;
+    var n = byId(objId);
+    if (!n || !avatarCtrl) { return; }
+
+    var spawnPos = new THREE.Vector3(0, 0, 0);
+    var floorY = 0;
+    var pintuPt = null;
+    if (graf && graf.titik) {
+      graf.titik.forEach(function (pt) {
+        var j = pt.jenis || (pt.t && pt.t.jenis);
+        var rId = pt.ruangId || (pt.t && pt.t.ruang_id);
+        var oId = pt.objekId || (pt.t && pt.t.objek_id);
+        if (j === 'pintu' && (rId === objId || oId === objId)) {
+          pintuPt = pt;
+        }
+      });
+    }
+    var ptCoord = pintuPt ? (pintuPt.pos || pintuPt.worldPos) : null;
+    if (ptCoord) {
+      spawnPos.copy(ptCoord);
+      floorY = ptCoord.y;
+    } else {
+      var box = stage.worldBox(objId);
+      if (!box.isEmpty()) {
+        var c = box.getCenter(new THREE.Vector3());
+        var s = box.getSize(new THREE.Vector3());
+        spawnPos.set(c.x, box.min.y, box.max.z + 1.2);
+        floorY = box.min.y;
+      }
+    }
+    $('card').hidden = true;
+    avatarCtrl.mulaiJelajah(spawnPos, 0, floorY, null);
+    setStatus('Muncul di depan ' + (n.judul || 'objek') + '. Selamat menjelajah!');
+  });
+
   $('cardFly').addEventListener('click', function () { if (selectedId != null) { stage.flyTo(selectedId); } });
   $('cardClose').addEventListener('click', function () { select(null); });
   $('cardLink').addEventListener('click', function () {
@@ -169,11 +311,161 @@
     }
   });
 
+  /* ---------- petunjuk arah (tahap 4b) ---------- */
+  function getStartPoints() {
+    if (!graf || !graf.titik.size) { return []; }
+    // Prioritaskan titik berjenis gerbang
+    var g = graf.gerbang.slice();
+    if (!g.length) {
+      // Jika belum ada jenis gerbang, ambil titik luar yang terhubung
+      graf.titik.forEach(function (p) {
+        if (p.gedung == null) { g.push(p); }
+      });
+    }
+    return g;
+  }
+
+  function fillStartSelect(curStartId) {
+    var sel = $('routeStart');
+    if (!sel) { return null; }
+    sel.textContent = '';
+    var list = getStartPoints();
+    if (!list.length) {
+      var oNone = document.createElement('option');
+      oNone.value = '';
+      oNone.textContent = 'Belum ada jalur/gerbang';
+      sel.appendChild(oNone);
+      return null;
+    }
+    list.forEach(function (p, i) {
+      var opt = document.createElement('option');
+      opt.value = String(p.id);
+      opt.textContent = p.t.label ? p.t.label : ('Gerbang / Titik Awal ' + (i + 1));
+      sel.appendChild(opt);
+    });
+    if (curStartId && sel.querySelector('option[value="' + curStartId + '"]')) {
+      sel.value = String(curStartId);
+    } else {
+      sel.value = String(list[0].id);
+    }
+    return parseInt(sel.value, 10);
+  }
+
+  function renderRouteSteps(langkahList, rutePath) {
+    var ol = $('routeSteps');
+    if (!ol) { return; }
+    ol.textContent = '';
+    langkahList.forEach(function (st, idx) {
+      var li = document.createElement('li');
+      li.className = 'route-step' + (st.kurang ? ' warn' : '');
+      var ikon = document.createElement('span');
+      ikon.className = 'step-icon ' + st.ikon;
+      var txtBox = document.createElement('div');
+      txtBox.className = 'step-text-box';
+      var txt = document.createElement('span');
+      txt.className = 'step-text';
+      txt.textContent = st.teks;
+      txtBox.appendChild(txt);
+      if (st.jarak >= 1) {
+        var dist = document.createElement('span');
+        dist.className = 'step-dist';
+        dist.textContent = K3D_JALUR.fmtJarak(st.jarak);
+        txtBox.appendChild(dist);
+      }
+      li.append(ikon, txtBox);
+
+      li.addEventListener('mouseenter', function () {
+        if (ruteLayer) { ruteLayer.sorot(st.dari, st.ke); }
+      });
+      li.addEventListener('mouseleave', function () {
+        if (ruteLayer) { ruteLayer.sorot(0, 0); }
+      });
+      li.addEventListener('click', function () {
+        if (ruteLayer) { ruteLayer.fokus(st.dari, st.ke); }
+      });
+      ol.appendChild(li);
+    });
+  }
+
+  function showDirections(targetId) {
+    if (!targetId || typeof K3D_JALUR === 'undefined') { return; }
+    var n = byId(targetId);
+    if (!n) { return; }
+    curRouteTargetId = targetId;
+
+    if (!graf || !graf.titik.size) {
+      setStatus('Jalur kampus belum dikonfigurasi oleh admin.', 'warn');
+      return;
+    }
+
+    var startId = fillStartSelect($('routeStart') ? $('routeStart').value : null);
+    if (!startId) {
+      setStatus('Belum ada titik gerbang atau jalur yang terdaftar.', 'warn');
+      return;
+    }
+
+    var noStairs = $('routeNoStairs') ? $('routeNoStairs').checked : false;
+    var rute = K3D_JALUR.cariRute(stage, graf, startId, targetId, { hindariTangga: noStairs });
+
+    var panel = $('routePanel');
+    if (!rute.ok) {
+      if (ruteLayer) { ruteLayer.hapus(); }
+      if (panel) { panel.hidden = false; }
+      $('routeDestTitle').textContent = n.judul || K3D.labelOf(n);
+      $('routeSummary').textContent = rute.pesan;
+      $('routeSummary').className = 'route-summary warn';
+      $('routeSteps').textContent = '';
+      return;
+    }
+
+    if (panel) { panel.hidden = false; }
+    $('routeDestTitle').textContent = n.judul || K3D.labelOf(n);
+
+    // Hitung langkah tertulis & ringkasan
+    var hasil = K3D_JALUR.buatLangkah(stage, rute);
+    $('routeSummary').className = 'route-summary';
+    $('routeTime').textContent = hasil.menit + ' menit jalan kaki';
+    $('routeDist').textContent = '(' + K3D_JALUR.fmtJarak(hasil.jarak) + ')';
+    renderRouteSteps(hasil.langkah, rute.path);
+
+    // Tampilkan rute visual 3D
+    if (ruteLayer) {
+      ruteLayer.tampil(rute.path.map(function (p) { return p.pos; }));
+      ruteLayer.fokus();
+    }
+  }
+
+  function hideDirections() {
+    curRouteTargetId = null;
+    if ($('routePanel')) { $('routePanel').hidden = true; }
+    if (ruteLayer) { ruteLayer.hapus(); }
+  }
+
+  $('cardRoute').addEventListener('click', function () {
+    if (selectedId != null) { showDirections(selectedId); }
+  });
+  $('routeClose').addEventListener('click', hideDirections);
+  $('routeStart').addEventListener('change', function () {
+    if (curRouteTargetId != null) { showDirections(curRouteTargetId); }
+  });
+  $('routeNoStairs').addEventListener('change', function () {
+    if (curRouteTargetId != null) { showDirections(curRouteTargetId); }
+  });
+  $('routeFlyAll').addEventListener('click', function () {
+    if (ruteLayer) { ruteLayer.fokus(); }
+  });
+
   $('homeBtn').addEventListener('click', function () {
+    if (avatarCtrl && avatarCtrl.isActive()) {
+      avatarCtrl.keluarJelajah(true);
+    } else {
+      stage.home(false);
+    }
     select(null);
+    hideDirections();
     resetAllFloors();
     if ($('floorPanel')) { $('floorPanel').hidden = true; }
-    stage.home(false);
+    setStatus('Kembali ke mode orbit seluruh kampus.');
   });
 
   /* ---------- kontrol lantai & mode potong ---------- */
@@ -416,5 +708,167 @@
     markBrowse();
   });
 
+  /* ---------- mode karakter / avatar jelajah (tahap 5a) ---------- */
+  var spawnModal = $('spawnModal');
+  var btnExplore = $('exploreBtn');
+  var tabSpawnGate = $('tabSpawnGate');
+  var tabSpawnRoom = $('tabSpawnRoom');
+  var secSpawnGate = $('sectionSpawnGate');
+  var secSpawnRoom = $('sectionSpawnRoom');
+  var selSpawnGate = $('selectSpawnGate');
+  var selSpawnRoom = $('selectSpawnRoom');
+  var spawnMode = 'gate'; // 'gate' atau 'room'
+
+  function bukaModalSpawn() {
+    if (!spawnModal) { return; }
+    initAvatar();
+
+    // 1. Isi daftar gerbang / titik masuk
+    selSpawnGate.textContent = '';
+    var gates = [];
+    if (graf && graf.titik) {
+      graf.titik.forEach(function (pt) {
+        if (pt.jenis === 'gerbang') { gates.push(pt); }
+      });
+      if (!gates.length) {
+        // Ambil titik luar bila belum ada jenis gerbang khusus
+        graf.titik.forEach(function (pt) {
+          if (pt.gedung == null) { gates.push(pt); }
+        });
+      }
+    }
+
+    if (gates.length) {
+      gates.forEach(function (g) {
+        var opt = document.createElement('option');
+        opt.value = String(g.id);
+        opt.textContent = g.label ? g.label : 'Titik ' + (g.jenis || 'Masuk') + ' #' + g.id;
+        selSpawnGate.appendChild(opt);
+      });
+    } else {
+      var defOpt = document.createElement('option');
+      defOpt.value = 'default_origin';
+      defOpt.textContent = 'Gerbang Utama (Depan Kampus)';
+      selSpawnGate.appendChild(defOpt);
+    }
+
+    // 2. Isi daftar gedung & ruangan
+    selSpawnRoom.textContent = '';
+    var rooms = nodes.filter(function (n) {
+      return (n.tipe === 'ruang' || n.tipe === 'gedung') && n.judul;
+    }).sort(function (a, b) {
+      return (a.judul || '').localeCompare(b.judul || '');
+    });
+
+    rooms.forEach(function (r) {
+      var opt = document.createElement('option');
+      opt.value = String(r.id);
+      opt.textContent = (r.tipe === 'ruang' ? 'Ruang: ' : 'Gedung: ') + r.judul + (r.unit_nama ? ' (' + r.unit_nama + ')' : '');
+      selSpawnRoom.appendChild(opt);
+    });
+
+    // Buka tab default gerbang
+    setTabSpawn('gate');
+    spawnModal.hidden = false;
+  }
+
+  function setTabSpawn(mode) {
+    spawnMode = mode;
+    tabSpawnGate.classList.toggle('active', mode === 'gate');
+    tabSpawnRoom.classList.toggle('active', mode === 'room');
+    secSpawnGate.hidden = (mode !== 'gate');
+    secSpawnRoom.hidden = (mode !== 'room');
+  }
+
+  if (tabSpawnGate) { tabSpawnGate.addEventListener('click', function () { setTabSpawn('gate'); }); }
+  if (tabSpawnRoom) { tabSpawnRoom.addEventListener('click', function () { setTabSpawn('room'); }); }
+  if (btnExplore) {
+    btnExplore.addEventListener('click', function () {
+      if (avatarCtrl && avatarCtrl.isActive()) {
+        avatarCtrl.keluarJelajah(true);
+      } else {
+        bukaModalSpawn();
+      }
+    });
+  }
+
+  function tutupModalSpawn() {
+    if (spawnModal) { spawnModal.hidden = true; }
+  }
+
+  $('spawnClose').addEventListener('click', tutupModalSpawn);
+  $('spawnCancel').addEventListener('click', tutupModalSpawn);
+
+  $('spawnStart').addEventListener('click', function () {
+    tutupModalSpawn();
+    if (!avatarCtrl) { initAvatar(); }
+    if (!avatarCtrl) { return; }
+
+    var spawnPos = new THREE.Vector3(0, 0, 15);
+    var spawnYaw = 0;
+    var floorY = 0;
+    var lantaiId = null;
+
+    if (spawnMode === 'gate') {
+      var gateVal = selSpawnGate.value;
+      if (gateVal !== 'default_origin' && graf && graf.titik.has(parseInt(gateVal, 10))) {
+        var pt = graf.titik.get(parseInt(gateVal, 10));
+        var gPos = pt ? (pt.pos || pt.worldPos) : null;
+        if (gPos) {
+          spawnPos.copy(gPos);
+          floorY = gPos.y;
+          // Hadapkan karakter ke arah tengah kampus
+          spawnYaw = Math.atan2(-spawnPos.x, -spawnPos.z);
+        } else {
+          spawnPos.set(10, 0, 84);
+          spawnYaw = 0;
+          floorY = 0;
+        }
+      } else {
+        spawnPos.set(10, 0, 84);
+        spawnYaw = 0;
+        floorY = 0;
+      }
+    } else {
+      var objId = parseInt(selSpawnRoom.value, 10);
+      var n = byId(objId);
+      if (n) {
+        // Cek titik pintu ruangan di graf
+        var pintuPt = null;
+        if (graf && graf.titik) {
+          graf.titik.forEach(function (pt) {
+            var j = pt.jenis || (pt.t && pt.t.jenis);
+            var rId = pt.ruangId || (pt.t && pt.t.ruang_id);
+            var oId = pt.objekId || (pt.t && pt.t.objek_id);
+            if (j === 'pintu' && (rId === objId || oId === objId)) {
+              pintuPt = pt;
+            }
+          });
+        }
+
+        var pintuPos = pintuPt ? (pintuPt.pos || pintuPt.worldPos) : null;
+        if (pintuPos) {
+          spawnPos.copy(pintuPos);
+          floorY = pintuPos.y;
+          spawnYaw = 0;
+        } else {
+          // Ambil bounding box objek di dunia nyata
+          var box = stage.worldBox(objId);
+          if (!box.isEmpty()) {
+            var c = box.getCenter(new THREE.Vector3());
+            var s = box.getSize(new THREE.Vector3());
+            spawnPos.set(c.x, box.min.y, box.max.z + 1.2);
+            floorY = box.min.y;
+            spawnYaw = 0;
+          }
+        }
+      }
+    }
+
+    avatarCtrl.mulaiJelajah(spawnPos, spawnYaw, floorY, lantaiId);
+    setStatus('Mode Jelajah Aktif. Gunakan WASD atau Joystick untuk berjalan, Shift untuk lari, V untuk alih kamera 1P/3P.');
+  });
+
   load();
 })();
+

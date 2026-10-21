@@ -165,6 +165,7 @@ class Kampus3d_admin extends CI_Controller
             'urlLibGanti' => site_url('kampus3d_admin/library_ganti'),
             'urlUsers'    => site_url('kampus3d_admin/users'),
             'urlSimpanUserUnit' => site_url('kampus3d_admin/simpan_user_unit'),
+            'urlAvatarSetting'  => site_url('kampus3d_admin/simpan_avatar_setting'),
             'urlPublik'   => site_url('kampus3d'),
             'urlLogout'   => site_url('kampus3d_admin/logout'),
             'user'        => $this->nama_user(),
@@ -179,15 +180,19 @@ class Kampus3d_admin extends CI_Controller
         $this->load->view('kampus3d/editor', array('cfg' => $cfg));
     }
 
-    /** Seluruh objek (termasuk draft) dan pustaka model. */
+    /** Seluruh objek (termasuk draft), pustaka model, graf jalur, dan pengaturan avatar. */
     public function data()
     {
         $this->json(array(
-            'ok'      => TRUE,
-            'objek'   => $this->k3d->daftar_objek(FALSE),
-            'library' => $this->k3d->daftar_library($this->url_model()),
+            'ok'        => TRUE,
+            'objek'     => $this->k3d->daftar_objek(FALSE),
+            'library'   => $this->k3d->daftar_library($this->url_model()),
+            'jalur'     => $this->k3d->daftar_jalur(),
+            'jalur_rev' => $this->k3d->jalur_rev(),
+            'avatar'    => $this->k3d->ambil_avatar_setting(),
         ));
     }
+
 
     /** Menyimpan keadaan editor. Menerima POST dengan kolom "payload" berisi JSON. */
     public function simpan()
@@ -207,7 +212,10 @@ class Kampus3d_admin extends CI_Controller
                 }
             }
         }
-        $hasil = $this->k3d->simpan($data['objek'], array_values($hapus), $this->nama_user(), $this->user_id(), $this->role_user());
+        // Jalur hanya dikirim editor bila berubah; NULL berarti jalur di server tidak disentuh.
+        $jalur = (isset($data['jalur']) && is_array($data['jalur'])) ? $data['jalur'] : NULL;
+        $jalur_rev = isset($data['jalur_rev']) && is_numeric($data['jalur_rev']) ? (int) $data['jalur_rev'] : 0;
+        $hasil = $this->k3d->simpan($data['objek'], array_values($hapus), $this->nama_user(), $this->user_id(), $this->role_user(), $jalur, $jalur_rev);
         $status = 200;
         if ( ! $hasil['ok']) {
             $status = (isset($hasil['bentrok']) && $hasil['bentrok']) ? 409 : 400;
@@ -404,6 +412,29 @@ class Kampus3d_admin extends CI_Controller
         $this->json(array('ok' => TRUE, 'library' => $this->library_klien($id)));
     }
 
+    /** Menyimpan pengaturan mode karakter / avatar. Hanya superadmin. */
+    public function simpan_avatar_setting()
+    {
+        if ($this->input->method() !== 'post') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Metode tidak diizinkan.'), 405);
+        }
+        if ($this->role_user() !== 'superadmin') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Akses ditolak: Hanya superadmin yang dapat mengubah pengaturan mode karakter.'), 403);
+        }
+        $data = array(
+            'avatar_lib_id'     => $this->input->post('avatar_lib_id'),
+            'avatar_speed'      => $this->input->post('avatar_speed'),
+            'avatar_run_speed'  => $this->input->post('avatar_run_speed'),
+            'avatar_cam_height' => $this->input->post('avatar_cam_height'),
+        );
+        $hasil = $this->k3d->simpan_avatar_setting($data);
+        $this->json(array(
+            'ok'     => TRUE,
+            'avatar' => $hasil,
+            'pesan'  => 'Pengaturan mode karakter berhasil disimpan.',
+        ));
+    }
+
     /**
      * Memeriksa kepala berkas GLB: magic "glTF", versi 2, dan panjang sama dengan ukuran berkas.
      */
@@ -422,3 +453,4 @@ class Kampus3d_admin extends CI_Controller
         return $u['versi'] === 2 && $u['panjang'] === $ukuran;
     }
 }
+

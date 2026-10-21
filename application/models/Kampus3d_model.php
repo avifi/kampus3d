@@ -21,11 +21,18 @@ class Kampus3d_model extends CI_Model
     /** Jenis area outdoor. 'garis' = berupa jalur dengan lebar, 'bidang' = poligon tertutup. */
     private $subtipe_area = array(
         'jalan'    => 'garis',
+        'sungai'   => 'garis',
         'taman'    => 'bidang',
         'lapangan' => 'bidang',
         'parkir'   => 'bidang',
     );
     private $batas_titik = 500;
+
+    /** Jalur petunjuk arah (tahap 4b). */
+    private $jenis_titik = array('jalur', 'gerbang', 'pintu', 'tangga', 'lift');
+    private $tempel_boleh = array('gedung', 'lantai', 'ruang');
+    private $batas_jalur_titik = 5000;
+    private $batas_jalur_ruas = 20000;
 
     public function __construct()
     {
@@ -271,9 +278,12 @@ class Kampus3d_model extends CI_Model
      *
      * @return array ['ok'=>bool, 'pesan'=>string, 'peta_id'=>object, 'versi_baru'=>object, ...]
      */
-    public function simpan($objek, $hapus, $user, $user_id = NULL, $role = 'superadmin')
+    public function simpan($objek, $hapus, $user, $user_id = NULL, $role = 'superadmin', $jalur = NULL, $jalur_rev = NULL)
     {
         $this->pastikan_tabel_user();
+        if ($jalur !== NULL) {
+            $this->pastikan_tabel_jalur();
+        }
 
         if (count($objek) > $this->batas_objek) {
             return array('ok' => FALSE, 'pesan' => 'Terlalu banyak objek (maksimal ' . $this->batas_objek . ').');
@@ -395,6 +405,22 @@ class Kampus3d_model extends CI_Model
             }
         }
 
+        // 3. Jalur petunjuk arah: hanya superadmin, dan jalur di server tidak boleh berubah sejak dimuat.
+        $jalur_bersih = NULL;
+        if ($jalur !== NULL) {
+            if ($role !== 'superadmin') {
+                return array('ok' => FALSE, 'pesan' => 'Akses ditolak: Hanya superadmin yang dapat mengubah jalur petunjuk arah.');
+            }
+            if ((int) $jalur_rev !== $this->jalur_rev()) {
+                return array(
+                    'ok'      => FALSE,
+                    'bentrok' => TRUE,
+                    'pesan'   => 'Bentrok penyimpanan terdeteksi! Jalur petunjuk arah telah diubah oleh admin lain sejak halaman ini dimuat. Muat ulang halaman sebelum menyimpan.',
+                );
+            }
+            $jalur_bersih = $this->bersihkan_jalur($jalur, $this->peta_tempelan($jalur, $baru, $hapus));
+        }
+
         $now = date('Y-m-d H:i:s');
         $debug_lama = $this->db->db_debug;
         $this->db->db_debug = FALSE;
@@ -454,6 +480,10 @@ class Kampus3d_model extends CI_Model
             'ringkasan' => 'tambah ' . $tambah . ', ubah ' . $ubah . ', hapus ' . count($hapus),
         ));
 
+        if ($jalur_bersih !== NULL) {
+            $this->tulis_jalur($jalur_bersih, $peta, $now, $user);
+        }
+
         $this->db->trans_complete();
         $gagal = ($this->db->trans_status() === FALSE);
         $this->db->db_debug = $debug_lama;
@@ -461,7 +491,7 @@ class Kampus3d_model extends CI_Model
         if ($gagal) {
             return array('ok' => FALSE, 'pesan' => 'Gagal menyimpan ke database. Tidak ada perubahan yang tersimpan.');
         }
-        return array(
+        $hasil = array(
             'ok'         => TRUE,
             'peta_id'    => (object) $peta,
             'versi_baru' => (object) $versi_baru,
@@ -469,6 +499,245 @@ class Kampus3d_model extends CI_Model
             'ubah'       => $ubah,
             'hapus'      => count($hapus),
         );
+        if ($jalur_bersih !== NULL) {
+            $hasil['jalur'] = $this->daftar_jalur();
+            $hasil['jalur_rev'] = $this->jalur_rev();
+        }
+        return $hasil;
+    }
+
+    /* ------------------------------------------------------------------
+     * Jalur petunjuk arah (tahap 4b)
+     * ------------------------------------------------------------------ */
+
+    /** Membuat tabel jalur bila belum ada (sama dengan sql/tahap4b.sql). */
+    public function pastikan_tabel_jalur()
+    {
+        if ( ! $this->db->table_exists('k3d_jalur_titik')) {
+            $this->db->query("CREATE TABLE IF NOT EXISTS `k3d_jalur_titik` (
+              `id`        INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `objek_id`  INT UNSIGNED NULL,
+              `jenis`     ENUM('jalur','gerbang','pintu','tangga','lift') NOT NULL DEFAULT 'jalur',
+              `label`     VARCHAR(80) NOT NULL DEFAULT '',
+              `ruang_id`  INT UNSIGNED NULL,
+              `x`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+              `y`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+              `z`         DECIMAL(10,3) NOT NULL DEFAULT 0,
+              PRIMARY KEY (`id`),
+              KEY `idx_objek` (`objek_id`),
+              KEY `idx_ruang` (`ruang_id`),
+              KEY `idx_jenis` (`jenis`),
+              CONSTRAINT `fk_k3d_jt_objek` FOREIGN KEY (`objek_id`) REFERENCES `k3d_objek` (`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_k3d_jt_ruang` FOREIGN KEY (`ruang_id`) REFERENCES `k3d_objek` (`id`) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+        if ( ! $this->db->table_exists('k3d_jalur_ruas')) {
+            $this->db->query("CREATE TABLE IF NOT EXISTS `k3d_jalur_ruas` (
+              `id`       INT UNSIGNED NOT NULL AUTO_INCREMENT,
+              `titik_a`  INT UNSIGNED NOT NULL,
+              `titik_b`  INT UNSIGNED NOT NULL,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_ab` (`titik_a`, `titik_b`),
+              KEY `idx_b` (`titik_b`),
+              CONSTRAINT `fk_k3d_jr_a` FOREIGN KEY (`titik_a`) REFERENCES `k3d_jalur_titik` (`id`) ON DELETE CASCADE,
+              CONSTRAINT `fk_k3d_jr_b` FOREIGN KEY (`titik_b`) REFERENCES `k3d_jalur_titik` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        }
+    }
+
+    /**
+     * Nomor revisi jalur = id log penyimpanan jalur terakhir (0 bila belum pernah).
+     * Dipakai untuk menolak penyimpanan dari halaman yang memuat jalur versi lama.
+     */
+    public function jalur_rev()
+    {
+        $row = $this->db->query("SELECT MAX(id) AS rev FROM k3d_log WHERE aksi = 'jalur'")->row_array();
+        return ($row && $row['rev'] !== NULL) ? (int) $row['rev'] : 0;
+    }
+
+    /**
+     * Graf jalur untuk klien: ['titik' => [...], 'ruas' => [[a, b], ...]].
+     * Bila $objek_boleh diisi (peta id => TRUE), hanya titik yang menempel di tanah
+     * atau di objek tersebut yang dikirim, dan ruang_id di luar daftar dikosongkan.
+     */
+    public function daftar_jalur($objek_boleh = NULL)
+    {
+        $this->pastikan_tabel_jalur();
+        $rows = $this->db->order_by('id', 'ASC')->get('k3d_jalur_titik')->result_array();
+        $titik = array();
+        $ada = array();
+        foreach ($rows as $r) {
+            $oid = $r['objek_id'] === NULL ? NULL : (int) $r['objek_id'];
+            $rid = $r['ruang_id'] === NULL ? NULL : (int) $r['ruang_id'];
+            if ($objek_boleh !== NULL) {
+                if ($oid !== NULL && ! isset($objek_boleh[$oid])) {
+                    continue;
+                }
+                if ($rid !== NULL && ! isset($objek_boleh[$rid])) {
+                    $rid = NULL;
+                }
+            }
+            $id = (int) $r['id'];
+            $ada[$id] = TRUE;
+            $titik[] = array(
+                'id'       => $id,
+                'objek_id' => $oid,
+                'jenis'    => $r['jenis'],
+                'label'    => (string) $r['label'],
+                'ruang_id' => $rid,
+                'x'        => (float) $r['x'],
+                'y'        => (float) $r['y'],
+                'z'        => (float) $r['z'],
+            );
+        }
+        $ruas = array();
+        foreach ($this->db->order_by('id', 'ASC')->get('k3d_jalur_ruas')->result_array() as $r) {
+            $a = (int) $r['titik_a'];
+            $b = (int) $r['titik_b'];
+            if (isset($ada[$a]) && isset($ada[$b])) {
+                $ruas[] = array($a, $b);
+            }
+        }
+        return array('titik' => $titik, 'ruas' => $ruas);
+    }
+
+    /**
+     * Peta id objek (id klien) => tipe untuk semua objek yang boleh dirujuk titik jalur:
+     * objek dalam daftar simpan, ditambah objek lama di database yang dirujuk dan tidak dihapus.
+     */
+    private function peta_tempelan($jalur, $baru, $hapus)
+    {
+        $peta = array();
+        foreach ($baru as $kid => $n) {
+            $peta[$kid] = $n['tipe'];
+        }
+        $cari = array();
+        if (is_array($jalur) && isset($jalur['titik']) && is_array($jalur['titik'])) {
+            foreach ($jalur['titik'] as $t) {
+                foreach (array('objek_id', 'ruang_id') as $k) {
+                    if (is_array($t) && isset($t[$k]) && is_numeric($t[$k]) && (int) $t[$k] > 0 && ! isset($peta[(int) $t[$k]])) {
+                        $cari[(int) $t[$k]] = (int) $t[$k];
+                    }
+                }
+            }
+        }
+        foreach ($hapus as $hid) {
+            unset($cari[(int) $hid]);
+        }
+        if ( ! empty($cari)) {
+            foreach (array_chunk(array_values($cari), 500) as $potong) {
+                $rows = $this->db->select('id, tipe')->where_in('id', $potong)->get('k3d_objek')->result_array();
+                foreach ($rows as $r) {
+                    $peta[(int) $r['id']] = $r['tipe'];
+                }
+            }
+        }
+        return $peta;
+    }
+
+    /**
+     * Membersihkan graf jalur dari klien. $tempelan: peta id objek => tipe yang sah.
+     * Titik yang menempel ke objek tak dikenal dibuang, ruas ke titik yang dibuang ikut dibuang.
+     * Mengembalikan ['titik' => [id_klien => baris], 'ruas' => [[id_klien_a, id_klien_b], ...]].
+     */
+    public function bersihkan_jalur($jalur, $tempelan)
+    {
+        $titik = array();
+        $ruas = array();
+        if ( ! is_array($jalur)) {
+            return array('titik' => $titik, 'ruas' => $ruas);
+        }
+        $daftar = (isset($jalur['titik']) && is_array($jalur['titik'])) ? array_values($jalur['titik']) : array();
+        foreach (array_slice($daftar, 0, $this->batas_jalur_titik) as $t) {
+            if ( ! is_array($t) || ! isset($t['id']) || ! is_numeric($t['id'])) {
+                continue;
+            }
+            $cid = (int) $t['id'];
+            if (isset($titik[$cid])) {
+                continue;
+            }
+            $oid = NULL;
+            if (isset($t['objek_id']) && $t['objek_id'] !== '' && is_numeric($t['objek_id'])) {
+                $oid = (int) $t['objek_id'];
+                if ( ! isset($tempelan[$oid]) || ! in_array($tempelan[$oid], $this->tempel_boleh, TRUE)) {
+                    continue; // tempelan sudah dihapus atau bukan gedung/lantai/ruang
+                }
+            }
+            $rid = NULL;
+            if (isset($t['ruang_id']) && $t['ruang_id'] !== '' && is_numeric($t['ruang_id']) && isset($tempelan[(int) $t['ruang_id']])) {
+                $rid = (int) $t['ruang_id'];
+            }
+            $jenis = (isset($t['jenis']) && in_array($t['jenis'], $this->jenis_titik, TRUE)) ? $t['jenis'] : 'jalur';
+            $titik[$cid] = array(
+                'objek_id' => $oid,
+                'jenis'    => $jenis,
+                'label'    => trim($this->potong(isset($t['label']) ? $t['label'] : '', 80)),
+                'ruang_id' => $rid,
+                'x'        => round($this->angka($t, 'x', 0, -5000, 5000), 3),
+                'y'        => round($this->angka($t, 'y', 0, -5000, 5000), 3),
+                'z'        => round($this->angka($t, 'z', 0, -5000, 5000), 3),
+            );
+        }
+        $daftar = (isset($jalur['ruas']) && is_array($jalur['ruas'])) ? array_values($jalur['ruas']) : array();
+        foreach (array_slice($daftar, 0, $this->batas_jalur_ruas) as $r) {
+            if ( ! is_array($r) || count($r) < 2) {
+                continue;
+            }
+            $r = array_values($r);
+            if ( ! is_numeric($r[0]) || ! is_numeric($r[1])) {
+                continue;
+            }
+            $a = (int) $r[0];
+            $b = (int) $r[1];
+            if ($a === $b || ! isset($titik[$a]) || ! isset($titik[$b])) {
+                continue;
+            }
+            $kunci = min($a, $b) . ':' . max($a, $b);
+            $ruas[$kunci] = array($a, $b);
+        }
+        return array('titik' => $titik, 'ruas' => array_values($ruas));
+    }
+
+    /**
+     * Mengganti seluruh graf jalur (dipanggil di dalam transaksi simpan).
+     * $peta: id klien objek => id database (dari penyimpanan objek pada transaksi yang sama).
+     */
+    private function tulis_jalur($j, $peta, $now, $user)
+    {
+        $this->db->query('DELETE FROM k3d_jalur_ruas');
+        $this->db->query('DELETE FROM k3d_jalur_titik');
+        $map = array();
+        $ubah_id = function ($id) use ($peta) {
+            if ($id === NULL) {
+                return NULL;
+            }
+            return isset($peta[$id]) ? (int) $peta[$id] : ($id > 0 ? $id : NULL);
+        };
+        foreach ($j['titik'] as $cid => $t) {
+            $oid = $ubah_id($t['objek_id']);
+            if ($t['objek_id'] !== NULL && $oid === NULL) {
+                continue;
+            }
+            $t['objek_id'] = $oid;
+            $t['ruang_id'] = $ubah_id($t['ruang_id']);
+            $this->db->insert('k3d_jalur_titik', $t);
+            $map[$cid] = (int) $this->db->insert_id();
+        }
+        $batch = array();
+        foreach ($j['ruas'] as $r) {
+            if (isset($map[$r[0]]) && isset($map[$r[1]])) {
+                $batch[] = array('titik_a' => $map[$r[0]], 'titik_b' => $map[$r[1]]);
+            }
+        }
+        foreach (array_chunk($batch, 500) as $potong) {
+            $this->db->insert_batch('k3d_jalur_ruas', $potong);
+        }
+        $this->db->insert('k3d_log', array(
+            'waktu'     => $now,
+            'user_id'   => $user,
+            'aksi'      => 'jalur',
+            'ringkasan' => 'jalur: ' . count($map) . ' titik, ' . count($batch) . ' ruas',
+        ));
     }
 
     /** Mengembalikan peta id => TRUE untuk id yang ada di tabel. */
@@ -851,4 +1120,110 @@ class Kampus3d_model extends CI_Model
 
         return $user;
     }
+
+    /* ------------------------------------------------------------------
+     * Pengaturan Mode Karakter / Avatar (Tahap 5a)
+     * ------------------------------------------------------------------ */
+
+    /** Memastikan tabel k3d_setting ada dan berisi nilai awal. */
+    public function pastikan_tabel_setting()
+    {
+        if ( ! $this->db->table_exists('k3d_setting')) {
+            $sql = "CREATE TABLE IF NOT EXISTS `k3d_setting` (
+              `kunci` VARCHAR(60) NOT NULL,
+              `nilai` TEXT NOT NULL,
+              PRIMARY KEY (`kunci`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;";
+            $this->db->query($sql);
+
+            $default_settings = array(
+                array('kunci' => 'avatar_lib_id',     'nilai' => ''),
+                array('kunci' => 'avatar_speed',      'nilai' => '3.5'),
+                array('kunci' => 'avatar_run_speed',  'nilai' => '6.5'),
+                array('kunci' => 'avatar_cam_height', 'nilai' => '1.6'),
+            );
+            $this->db->insert_batch('k3d_setting', $default_settings);
+        }
+    }
+
+    /** Mengambil pengaturan avatar untuk publik maupun admin. */
+    public function ambil_avatar_setting()
+    {
+        $this->pastikan_tabel_setting();
+
+        $rows = $this->db->get('k3d_setting')->result_array();
+        $map = array();
+        foreach ($rows as $r) {
+            $map[$r['kunci']] = $r['nilai'];
+        }
+
+        $def_speed = (float) $this->config->item('k3d_avatar_speed', 'kampus3d');
+        if ($def_speed <= 0) { $def_speed = 3.5; }
+
+        $def_run = (float) $this->config->item('k3d_avatar_run_speed', 'kampus3d');
+        if ($def_run <= 0) { $def_run = 6.5; }
+
+        $def_height = (float) $this->config->item('k3d_avatar_cam_height', 'kampus3d');
+        if ($def_height <= 0) { $def_height = 1.6; }
+
+        $lib_id = (isset($map['avatar_lib_id']) && is_numeric($map['avatar_lib_id']) && (int) $map['avatar_lib_id'] > 0)
+            ? (int) $map['avatar_lib_id'] : NULL;
+
+        $speed = isset($map['avatar_speed']) && is_numeric($map['avatar_speed']) ? (float) $map['avatar_speed'] : $def_speed;
+        $run_speed = isset($map['avatar_run_speed']) && is_numeric($map['avatar_run_speed']) ? (float) $map['avatar_run_speed'] : $def_run;
+        $cam_height = isset($map['avatar_cam_height']) && is_numeric($map['avatar_cam_height']) ? (float) $map['avatar_cam_height'] : $def_height;
+
+        // Validasi batas angka wajar
+        $speed = max(0.5, min(15.0, $speed));
+        $run_speed = max(1.0, min(25.0, $run_speed));
+        $cam_height = max(0.8, min(3.0, $cam_height));
+
+        return array(
+            'avatar_lib_id'     => $lib_id,
+            'avatar_speed'      => $speed,
+            'avatar_run_speed'  => $run_speed,
+            'avatar_cam_height' => $cam_height,
+        );
+    }
+
+    /** Menyimpan pengaturan avatar dari form admin. */
+    public function simpan_avatar_setting($data)
+    {
+        $this->pastikan_tabel_setting();
+
+        $lib_id = '';
+        if (isset($data['avatar_lib_id']) && is_numeric($data['avatar_lib_id']) && (int) $data['avatar_lib_id'] > 0) {
+            $cek = $this->db->where('id', (int) $data['avatar_lib_id'])->get('k3d_library')->row_array();
+            if ($cek) {
+                $lib_id = (string) (int) $data['avatar_lib_id'];
+            }
+        }
+
+        $speed = isset($data['avatar_speed']) && is_numeric($data['avatar_speed']) ? (float) $data['avatar_speed'] : 3.5;
+        $run_speed = isset($data['avatar_run_speed']) && is_numeric($data['avatar_run_speed']) ? (float) $data['avatar_run_speed'] : 6.5;
+        $cam_height = isset($data['avatar_cam_height']) && is_numeric($data['avatar_cam_height']) ? (float) $data['avatar_cam_height'] : 1.6;
+
+        $speed = max(1.0, min(15.0, $speed));
+        $run_speed = max(2.0, min(25.0, $run_speed));
+        $cam_height = max(1.0, min(3.0, $cam_height));
+
+        $items = array(
+            'avatar_lib_id'     => $lib_id,
+            'avatar_speed'      => (string) $speed,
+            'avatar_run_speed'  => (string) $run_speed,
+            'avatar_cam_height' => (string) $cam_height,
+        );
+
+        foreach ($items as $k => $v) {
+            $ada = $this->db->where('kunci', $k)->get('k3d_setting')->row_array();
+            if ($ada) {
+                $this->db->where('kunci', $k)->update('k3d_setting', array('nilai' => $v));
+            } else {
+                $this->db->insert('k3d_setting', array('kunci' => $k, 'nilai' => $v));
+            }
+        }
+
+        return $this->ambil_avatar_setting();
+    }
 }
+

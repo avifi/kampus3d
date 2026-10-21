@@ -1,26 +1,35 @@
-# Kampus 3D untuk CodeIgniter 3 (tahap 3)
+# Kampus 3D untuk CodeIgniter 3 (Tahap 5: Mode Karakter & Optimasi)
 
-Modul untuk menampilkan kampus dalam 3D di browser, dengan editor admin untuk menempatkan gedung, lantai, ruang, dan barang.
+Modul untuk menampilkan kampus dalam 3D di browser, dengan editor admin untuk menempatkan gedung, lantai, ruang, barang, area luar, petunjuk arah navigasi dari gerbang ke ruangan, serta **mode jelajah karakter (avatar 1P/3P)** dengan performa tinggi.
 
-- Halaman publik: pencarian, daftar gedung, kartu info, tautan langsung ke objek (`#objek-ID`).
-- Editor admin: unggah model `.glb`, atur posisi/rotasi/skala dengan gizmo, isi judul dan deskripsi, status draft/terbit, salin gedung atau ruang, urungkan/ulangi, pratinjau, simpan ke database.
-- Library model: setiap berkas yang diunggah masuk ke katalog dan bisa dipakai berkali-kali. Katalog punya pencarian, filter kategori, jumlah pemakaian, ubah nama/kategori, ganti berkas, dan hapus (hanya yang tidak dipakai).
-- Area outdoor: jalan, taman, lapangan, dan parkir digambar langsung di tanah dengan klik titik, bentuknya bisa disunting dengan menyeret titik.
-- Salin: salin dengan isi, salin kerangka, salin ke induk lain (mis. ruang ke lantai lain), dan gandakan berderet dengan jarak tertentu.
-- Semua pustaka JavaScript (Three.js r128, termasuk dekoder Draco) sudah ada di folder `assets`, jadi tidak butuh CDN atau internet.
+- **Halaman publik**:
+  - Pencarian gedung, ruang, & fasilitas, kartu info, tautan langsung ke objek (`#objek-ID`), pencetakan & pemindaian kode QR, pengatur lantai & mode potong atap.
+  - **Petunjuk arah visual 3D dari gerbang ke ruangan** lengkap dengan navigasi belokan langkah demi langkah ("jalan 50 m, belok kanan, naik tangga ke lantai 2").
+  - **Mode Karakter (Jelajah 3D)**: Pengunjung dapat menjelajahi kampus dari sudut pandang orang ketiga (3P) atau orang pertama (1P), kontrol desktop (WASD + mouse look / pointer lock) atau mobile HP (virtual analog joystick), tabrakan dinding otomatis berbasis bounding box tanpa data ekstra, transit tangga/lift antar-lantai, dan interaksi objek di dekat karakter.
+  - **Opsi Kualitas Grafis**: Pilihan kualitas rendering (Tinggi dengan bayangan lembut PCF, Sedang, Rendah hemat daya untuk HP lama).
+- **Optimasi & Realisme (Tahap 5b)**:
+  - **GPU Instancing (`THREE.InstancedMesh`)**: Me-render objek berulang (misal puluhan kursi kelas atau pohon taman) dalam 1 draw call tanpa mengurangi kemampuan klik / kartu info.
+  - **Pemuatan Bertahap (Distance LOD Culling)**: Interior gedung di luar jarak pandang disembunyikan otomatis untuk menghemat ratusan ribu poligon dan baterai ponsel.
+  - **Pencahayaan & Bayangan Lembut**: Directional sun light dengan normal bias, hemisphere sky light, dan bayangan alami yang jatuh di atas tanah dan bangunan.
+  - **Dukungan Penuh Kompresi Google Draco & Tekstur**: Pemuatan instan model `.glb` terkompresi hingga 85-90% lebih kecil.
+- **Editor admin**: unggah model `.glb`, atur posisi/rotasi/skala dengan gizmo, isi judul dan deskripsi, status draft/terbit, salin objek, kontrol bentrok penyimpanan bersamaan (optimistic locking), pembagian peran unit (Admin Fakultas / Superadmin), editor jalur navigasi, serta formulir pengaturan kecepatan/model karakter bawaan.
+- **Offline & Mandiri**: Semua pustaka JavaScript (Three.js r128, OrbitControls, TransformControls, GLTFLoader, dekoder WebAssembly Draco) sudah tersimpan lokal di folder `assets`, berjalan offline tanpa ketergantungan CDN internet luar.
 
 ## Isi paket
 
 ```
-sql/kampus3d.sql                          skema database (3 tabel)
-application/config/kampus3d.php           pengaturan modul
+sql/kampus3d.sql                          skema database lengkap (termasuk k3d_jalur & k3d_setting)
+sql/tahap4a.sql                           skrip migrasi tahap 4a (optimistic locking & role unit)
+sql/tahap4b.sql                           skrip migrasi tahap 4b (tabel graf jalur petunjuk arah)
+sql/tahap5a.sql                           skrip migrasi tahap 5a (tabel k3d_setting mode karakter)
+application/config/kampus3d.php           pengaturan modul & default avatar
 application/controllers/Kampus3d.php          halaman publik + data JSON publik
-application/controllers/Kampus3d_admin.php    editor admin + simpan + unggah
+application/controllers/Kampus3d_admin.php    editor admin + simpan + unggah + setting avatar
 application/models/Kampus3d_model.php
 application/views/kampus3d/publik.php
 application/views/kampus3d/editor.php
-assets/kampus3d/                          css, js, dan vendor (Three.js)
-uploads/kampus3d/models/                  folder model .glb (sudah berisi .htaccess pengaman)
+assets/kampus3d/                          css, js (k3d-core, k3d-jalur, k3d-avatar, k3d-qr, k3d-viewer, k3d-editor), vendor
+uploads/kampus3d/models/                  folder model .glb
 ```
 
 ## Memperbarui dari tahap sebelumnya
@@ -125,6 +134,60 @@ Yang belum ada: pembagian peran per unit dan pengecekan bentrok bila dua admin m
 Sudah diuji otomatis: sintaks semua berkas, validasi dan penyimpanan area (pembersihan titik, lebar, jenis tak dikenal), bentuk 3D jalan dan poligon (ukuran dan arah sumbu Z tepat), memilih area, titik tanah di bawah kursor, menggambar/menyeret/menghapus titik di editor, logika simpan (id sementara menjadi id server, aturan induk, hapus, jejak log) dengan database tiruan, logika library (pemakaian, ubah, hapus hanya bila tidak dipakai, ganti berkas, log), validasi berkas GLB, katalog dan salin lanjutan di DOM tiruan (filter, ubah nama, hapus ditolak/berhasil, ganti berkas GLB nyata, salin ke induk lain, posisi salinan berderet), adegan 3D (pemilihan objek tembus, pindah induk, kamera), pemuatan model GLB nyata, serta alur editor dan halaman publik di DOM tiruan.
 
 Belum diuji: berjalan di CodeIgniter dan MySQL sungguhan (termasuk pernyataan `DELETE ... NOT EXISTS` di MySQL asli), unggah dan hapus berkas di disk server sungguhan, serta tampilan di browser dengan GPU (termasuk menyeret titik area dengan mouse sungguhan; penyeretan diuji dengan peristiwa tiruan). Coba dulu di lingkungan pengembangan.
+
+## Panduan Optimasi Model 3D untuk Admin (Kompresi Draco & Tekstur)
+
+Agar halaman 3D kampus dapat dibuka dengan cepat dan lancar pada perangkat HP lama atau koneksi seluler, berkas model `.glb` yang diekspor dari perangkat lunak 3D (SketchUp, Blender, Revit, AutoCAD) disarankan dioptimasi dan dikompresi di komputer admin terlebih dahulu sebelum diunggah ke pustaka Kampus 3D.
+
+Modul Kampus 3D telah menyertakan dekoder WebAssembly **Google Draco** di `assets/kampus3d/vendor/draco/`, sehingga browser pengunjung dapat membaca model terkompresi tanpa memerlukan unduhan pustaka tambahan.
+
+### 1. Kompresi Cepat dengan `gltf-pipeline` (Disarankan)
+
+Jika komputer admin memiliki Node.js, gunakan alat resmi `gltf-pipeline` dari CesiumGS melalui terminal/PowerShell tanpa perlu instalasi rumit:
+
+```bash
+# Kompresi standar dengan Google Draco
+npx -y gltf-pipeline -i gedung_asli.glb -o gedung_draco.glb -d
+
+# Kompresi tingkat tinggi (file 80-92% lebih kecil)
+npx -y gltf-pipeline -i gedung_asli.glb -o gedung_draco.glb -d --draco.compressionLevel 10 --draco.quantizePositionBits 14
+```
+
+Hasil berkas `gedung_draco.glb` biasanya menyusut dari 25 MB menjadi hanya 1,8 MB – 3,5 MB dan siap diunggah ke editor admin Kampus 3D.
+
+### 2. Optimasi Geometri & Tekstur Menyeluruh dengan `gltfpack`
+
+`gltfpack` sangat cocok jika model arsitektur memiliki banyak material dan tekstur resolusi tinggi (4K/8K) yang ingin disederhanakan:
+
+```bash
+# Instalasi global via npm
+npm install -g gltfpack
+
+# Kompresi geometri Draco (-cc) dan batasi resolusi tekstur maksimal 1024px (-ts 0.5)
+gltfpack -i model_asli.glb -o model_opt.glb -cc -ts 0.5
+```
+
+Parameter yang berguna:
+- `-cc`: Mengaktifkan kompresi Draco pada geometri.
+- `-ts 0.5`: Mengompresi / memperkecil ukuran dimensi tekstur menjadi separuh (misal tekstur 2048x2048 diturunkan ke 1024x1024), sangat menghemat VRAM ponsel.
+- `-kn`: Menjaga nama-nama simpul/node agar hierarki tetap utuh.
+
+### 3. Ekspor Langsung dari Blender
+
+Jika admin membuat atau mengedit model di Blender:
+1. Buka menu **File** &rarr; **Export** &rarr; **glTF 2.0 (.glb)**.
+2. Di panel pengaturan ekspor sebelah kanan:
+   - Centang **Apply Modifiers** (tab *Geometry*).
+   - Centang **Draco mesh compression** (tab *Compression*). Atur *Quantization Bits* ke 14 atau 16.
+   - Pada tab *Images*, pilih format **JPEG / WebP** jika ada opsi, atau pastikan tekstur gambar tidak melebihi 2048&times;2048 piksel.
+3. Klik **Export glTF 2.0**. Berkas `.glb` yang dihasilkan sudah langsung terkompresi Draco.
+
+### 4. Tips Kualitas Grafis & Realisme Ringan
+
+- **Hindari tekstur di atas 2048x2048**: Pada layar peramban ponsel, tekstur 1024x1024 atau 2048x2048 sudah sangat tajam dan menghemat memori GPU secara drastis.
+- **Manfaatkan GPU Instancing**: Untuk perabot berulang (misal kursi kelas, meja, pohon taman), gunakan model pustaka `.glb` yang sama (`library_id` seragam). Modul Kampus 3D secara otomatis menggabungkannya ke dalam 1 panggilan gambar (*InstancedMesh*), sehingga 100 kursi hanya membebani GPU sebesar 1 kursi.
+- **Pemuatan Bertahap (LOD)**: Sistem otomatis menyembunyikan isi ruangan pada gedung yang berada jauh (>100 m) dan hanya merender penuh ketika didekati kamera atau karakter.
+- **Pilihan Kualitas**: Pengunjung dapat memilih mode **Rendah** di pojok kanan atas untuk mematikan bayangan dinamis bila membuka di ponsel lama dengan baterai hemat.
 
 ## Pemecahan masalah
 
