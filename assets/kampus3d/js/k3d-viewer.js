@@ -48,14 +48,18 @@
     });
   }
 
-  /* ---------- opsi tema terang / gelap ---------- */
+  /* ---------- opsi tema terang / gelap (Bootstrap & custom) ---------- */
   var themeBtn = $('themeBtn');
   var themeIcon = $('themeIcon');
   var themeText = $('themeText');
   function updateThemeUi(curTheme) {
     if (!themeBtn) { return; }
     var isDark = curTheme === 'dark';
-    if (themeIcon) { themeIcon.textContent = isDark ? '☀️' : '🌙'; }
+    document.documentElement.setAttribute('data-theme', curTheme);
+    document.documentElement.setAttribute('data-bs-theme', curTheme);
+    if (themeIcon) {
+      themeIcon.className = isDark ? 'bi bi-sun-fill text-warning' : 'bi bi-moon-stars';
+    }
     if (themeText) { themeText.textContent = isDark ? 'Mode Terang' : 'Mode Gelap'; }
     themeBtn.setAttribute('title', isDark ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap');
   }
@@ -66,6 +70,69 @@
       stage.setTheme(nextTheme);
       updateThemeUi(nextTheme);
       setStatus('Tema diubah ke: ' + (nextTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'));
+    });
+  }
+
+  /* ---------- toggle sidebar & layar penuh (tampilan lebih luas) ---------- */
+  var sidebarToggle = $('sidebarToggle');
+  var floatingSidebarToggle = $('floatingSidebarToggle');
+  var appEl = document.querySelector('.app.pub');
+
+  function setSidebarCollapsed(collapsed) {
+    if (!appEl) { return; }
+    appEl.classList.toggle('sidebar-collapsed', collapsed);
+    if (floatingSidebarToggle) {
+      floatingSidebarToggle.hidden = !collapsed;
+    }
+    if (sidebarToggle) {
+      sidebarToggle.setAttribute('title', collapsed ? 'Tampilkan Daftar Gedung (Buka Panel)' : 'Sembunyikan Daftar (Bikin 3D Lebih Luas)');
+      var icon = sidebarToggle.querySelector('i');
+      if (icon) {
+        icon.className = collapsed ? 'bi bi-layout-sidebar' : 'bi bi-layout-sidebar-inset';
+      }
+    }
+    try { localStorage.setItem('k3d_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    setTimeout(function () {
+      if (stage && stage.resize) { stage.resize(); }
+    }, 260);
+  }
+
+  if (sidebarToggle) {
+    sidebarToggle.addEventListener('click', function () {
+      var isCurrently = appEl ? appEl.classList.contains('sidebar-collapsed') : false;
+      setSidebarCollapsed(!isCurrently);
+    });
+  }
+  if (floatingSidebarToggle) {
+    floatingSidebarToggle.addEventListener('click', function () {
+      setSidebarCollapsed(false);
+    });
+  }
+
+  try {
+    var savedCollapsed = localStorage.getItem('k3d_sidebar_collapsed');
+    if (savedCollapsed === '1' || (savedCollapsed === null && window.innerWidth <= 768)) {
+      setSidebarCollapsed(true);
+    }
+  } catch (e) {}
+
+  var fullscreenBtn = $('fullscreenBtn');
+  var fullscreenIcon = $('fullscreenIcon');
+  if (fullscreenBtn) {
+    fullscreenBtn.addEventListener('click', function () {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function () {});
+      } else {
+        document.exitFullscreen().catch(function () {});
+      }
+    });
+    document.addEventListener('fullscreenchange', function () {
+      var isFs = !!document.fullscreenElement;
+      if (fullscreenIcon) {
+        fullscreenIcon.className = isFs ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen';
+      }
+      fullscreenBtn.setAttribute('title', isFs ? 'Keluar dari Layar Penuh' : 'Layar Penuh (Fullscreen)');
+      setTimeout(function () { if (stage && stage.resize) { stage.resize(); } }, 150);
     });
   }
 
@@ -135,9 +202,12 @@
       onActiveChange: function (isActive) {
         var btn = $('exploreBtn');
         if (btn) {
-          btn.classList.toggle('primary', isActive);
-          btn.textContent = isActive ? 'Keluar Mode Jelajah' : 'Jelajah Kampus';
-          btn.setAttribute('title', isActive ? 'Kembali ke mode orbit seluruh kampus' : 'Masuk ke mode karakter orang ketiga / pertama');
+          btn.classList.toggle('btn-success', !isActive);
+          btn.classList.toggle('btn-danger', isActive);
+          btn.innerHTML = isActive
+            ? '<i class="bi bi-box-arrow-right" id="exploreIcon"></i>'
+            : '<i class="bi bi-person-walking" id="exploreIcon"></i>';
+          btn.setAttribute('title', isActive ? 'Keluar Mode Jelajah (Kembali ke Orbit Seluruh Kampus)' : 'Jelajah Kampus (Mode Karakter 3D)');
         }
         if (isActive) {
           $('card').hidden = true;
@@ -210,6 +280,7 @@
       try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* diabaikan */ }
     }
     updateFloorPanelFor(n);
+    if (id != null) { openBuildingFor(id); }
     markBrowse();
   }
 
@@ -661,15 +732,55 @@
     setFloorIndex(val, val > 0);
   });
 
-  /* ---------- daftar dan pencarian ---------- */
+  /* ---------- daftar gedung/ruang collapse dan pencarian ---------- */
+  function getIconClass(n) {
+    if (n.tipe === 'gedung') { return 'bi-buildings text-warning'; }
+    if (n.tipe === 'lantai') { return 'bi-layers text-success'; }
+    if (n.tipe === 'ruang') { return 'bi-door-open text-primary'; }
+    if (n.tipe === 'barang') { return 'bi-box-seam text-secondary'; }
+    if (n.tipe === 'area') {
+      if (n.subtipe === 'jalan') { return 'bi-signpost-2 text-success'; }
+      if (n.subtipe === 'lapangan') { return 'bi-flag text-success'; }
+      if (n.subtipe === 'taman') { return 'bi-flower1 text-success'; }
+      if (n.subtipe === 'parkir') { return 'bi-p-square text-success'; }
+      return 'bi-tree text-success';
+    }
+    return 'bi-geo-alt text-muted';
+  }
+
+  function getBuildingIdFor(objId) {
+    var cur = byId(objId);
+    var guard = 0;
+    while (cur && guard++ < 10) {
+      if (cur.tipe === 'gedung') { return cur.id; }
+      cur = cur.parent_id != null ? byId(cur.parent_id) : null;
+    }
+    return null;
+  }
+
+  function openBuildingFor(objId) {
+    if (objId == null) { return; }
+    var bId = getBuildingIdFor(objId);
+    if (bId != null) {
+      var item = document.querySelector('.k3d-gedung-item[data-id="' + bId + '"]');
+      if (item && !item.classList.contains('open')) {
+        item.classList.add('open');
+        var body = item.querySelector('.k3d-gedung-body');
+        if (body) { body.hidden = false; }
+      }
+    }
+  }
+
   function makeItem(n, withCrumb) {
     var li = document.createElement('li');
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'tnode';
     b.dataset.id = String(n.id);
-    var dot = document.createElement('span');
-    dot.className = 'dot ' + n.tipe;
+
+    var icon = document.createElement('i');
+    icon.className = 'bi ' + getIconClass(n) + ' me-2 fs-6 flex-shrink-0';
+
     var box = document.createElement('span');
     box.className = 'stack';
     var t = document.createElement('span');
@@ -682,7 +793,7 @@
       s.textContent = K3D.labelOf(n) + ' · ' + crumb(n);
       box.appendChild(s);
     }
-    b.append(dot, box);
+    b.append(icon, box);
     b.addEventListener('click', function () { select(n.id, { fly: true }); });
     li.appendChild(b);
     return li;
@@ -691,37 +802,220 @@
   function renderBrowse() {
     var ul = $('browse');
     ul.textContent = '';
-    var roots = nodes.filter(function (n) { return n.parent_id == null; });
-    roots.filter(function (n) { return n.tipe !== 'area'; }).forEach(function (n) { ul.appendChild(makeItem(n, false)); });
+
+    // 1. Ambil seluruh gedung
+    var gedungs = nodes.filter(function (n) { return n.tipe === 'gedung'; });
+
+    gedungs.forEach(function (g) {
+      // Cari seluruh ruangan milik gedung ini (baik langsung maupun via lantai)
+      var rooms = nodes.filter(function (r) {
+        if (r.tipe !== 'ruang') { return false; }
+        if (r.parent_id === g.id) { return true; }
+        var p = byId(r.parent_id);
+        return (p && p.tipe === 'lantai' && p.parent_id === g.id);
+      });
+
+      // Cari seluruh lantai milik gedung ini
+      var floors = nodes.filter(function (fl) {
+        return fl.tipe === 'lantai' && fl.parent_id === g.id;
+      }).sort(function (a, b) {
+        return (a.urutan || 0) - (b.urutan || 0);
+      });
+
+      var li = document.createElement('li');
+      li.className = 'k3d-gedung-item';
+      li.dataset.id = String(g.id);
+
+      // Header Gedung
+      var header = document.createElement('div');
+      header.className = 'k3d-gedung-header';
+      header.dataset.id = String(g.id);
+
+      var chevronWrap = document.createElement('span');
+      chevronWrap.className = 'k3d-chevron-icon';
+      chevronWrap.innerHTML = '<i class="bi bi-chevron-right"></i>';
+
+      var bIcon = document.createElement('i');
+      bIcon.className = 'bi bi-buildings-fill text-warning me-1 flex-shrink-0';
+
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'k3d-gedung-title';
+      titleSpan.textContent = g.judul || '(Gedung tanpa judul)';
+
+      var countBadge = document.createElement('span');
+      countBadge.className = 'badge rounded-pill bg-body-tertiary text-body-secondary border ms-auto';
+      countBadge.style.fontSize = '10px';
+      countBadge.textContent = rooms.length + ' ruang';
+
+      var focusBtn = document.createElement('button');
+      focusBtn.type = 'button';
+      focusBtn.className = 'k3d-focus-icon-btn';
+      focusBtn.title = 'Fokus kamera ke ' + (g.judul || 'gedung');
+      focusBtn.setAttribute('aria-label', 'Fokus gedung');
+      focusBtn.innerHTML = '<i class="bi bi-crosshair"></i>';
+      focusBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        select(g.id, { fly: true });
+      });
+
+      header.append(chevronWrap, bIcon, titleSpan, countBadge, focusBtn);
+
+      // Body Gedung (Daftar Ruangan)
+      var body = document.createElement('div');
+      body.className = 'k3d-gedung-body';
+      body.hidden = true; // Tertutup (collapse) secara bawaan
+
+      if (rooms.length === 0) {
+        var emptyMsg = document.createElement('div');
+        emptyMsg.className = 'text-muted py-1 px-2';
+        emptyMsg.style.fontSize = '11px';
+        emptyMsg.textContent = 'Belum ada ruangan terdaftar di gedung ini.';
+        body.appendChild(emptyMsg);
+      } else if (floors.length > 0) {
+        // Kelompokkan per lantai
+        floors.forEach(function (fl) {
+          var floorRooms = rooms.filter(function (r) { return r.parent_id === fl.id; });
+          if (floorRooms.length > 0) {
+            var fHead = document.createElement('div');
+            fHead.className = 'k3d-floor-heading';
+            fHead.innerHTML = '<i class="bi bi-layers text-success me-1"></i> ' + (fl.judul || 'Lantai');
+            body.appendChild(fHead);
+
+            floorRooms.forEach(function (r) {
+              var rBtn = document.createElement('button');
+              rBtn.type = 'button';
+              rBtn.className = 'k3d-room-node tnode';
+              rBtn.dataset.id = String(r.id);
+              rBtn.innerHTML = '<i class="bi bi-door-open text-primary me-1 flex-shrink-0"></i>'
+                + '<span class="stack"><span class="tt">' + (r.judul || '(tanpa judul)') + '</span>'
+                + (r.unit_nama ? '<span class="sub text-muted">' + r.unit_nama + '</span>' : '') + '</span>';
+              rBtn.addEventListener('click', function () { select(r.id, { fly: true }); });
+              body.appendChild(rBtn);
+            });
+          }
+        });
+
+        // Ruangan langsung di bawah gedung tanpa lantai
+        var directRooms = rooms.filter(function (r) { return r.parent_id === g.id; });
+        if (directRooms.length > 0) {
+          var dHead = document.createElement('div');
+          dHead.className = 'k3d-floor-heading';
+          dHead.innerHTML = '<i class="bi bi-geo text-muted me-1"></i> Ruang Lainnya';
+          body.appendChild(dHead);
+
+          directRooms.forEach(function (r) {
+            var rBtn = document.createElement('button');
+            rBtn.type = 'button';
+            rBtn.className = 'k3d-room-node tnode';
+            rBtn.dataset.id = String(r.id);
+            rBtn.innerHTML = '<i class="bi bi-door-open text-primary me-1 flex-shrink-0"></i>'
+              + '<span class="stack"><span class="tt">' + (r.judul || '(tanpa judul)') + '</span>'
+              + (r.unit_nama ? '<span class="sub text-muted">' + r.unit_nama + '</span>' : '') + '</span>';
+            rBtn.addEventListener('click', function () { select(r.id, { fly: true }); });
+            body.appendChild(rBtn);
+          });
+        }
+      } else {
+        // Gedung tanpa lantai, tampilkan daftar ruang langsung
+        rooms.forEach(function (r) {
+          var rBtn = document.createElement('button');
+          rBtn.type = 'button';
+          rBtn.className = 'k3d-room-node tnode';
+          rBtn.dataset.id = String(r.id);
+          rBtn.innerHTML = '<i class="bi bi-door-open text-primary me-1 flex-shrink-0"></i>'
+            + '<span class="stack"><span class="tt">' + (r.judul || '(tanpa judul)') + '</span>'
+            + (r.unit_nama ? '<span class="sub text-muted">' + r.unit_nama + '</span>' : '') + '</span>';
+          rBtn.addEventListener('click', function () { select(r.id, { fly: true }); });
+          body.appendChild(rBtn);
+        });
+      }
+
+      // Klik header membuka/menutup collapse dan memilih gedung
+      header.addEventListener('click', function () {
+        var isOpen = li.classList.contains('open');
+        li.classList.toggle('open', !isOpen);
+        body.hidden = isOpen;
+        select(g.id, { fly: false });
+      });
+
+      li.append(header, body);
+      ul.appendChild(li);
+    });
+
     $('browseHead').hidden = ul.children.length === 0;
+
+    // 2. Ambil Area Luar
     var ua = $('browseArea');
     ua.textContent = '';
-    roots.filter(function (n) { return n.tipe === 'area'; }).forEach(function (n) { ua.appendChild(makeItem(n, false)); });
-    $('browseAreaHead').hidden = ua.children.length === 0;
+    var areas = nodes.filter(function (n) { return n.tipe === 'area'; });
+    areas.forEach(function (n) { ua.appendChild(makeItem(n, false)); });
+
+    var areaWrap = $('browseAreaWrap');
+    if (areaWrap) { areaWrap.hidden = areas.length === 0; }
+    if ($('browseAreaHead')) { $('browseAreaHead').hidden = areas.length === 0; }
+
     markBrowse();
   }
+
   function markBrowse() {
-    document.querySelectorAll('#browse .tnode, #browseArea .tnode, #results .tnode').forEach(function (b) {
+    document.querySelectorAll('#browse .tnode, #browseArea .tnode, #results .tnode, .k3d-gedung-header').forEach(function (b) {
       b.classList.toggle('sel', b.dataset.id === String(selectedId));
     });
   }
 
-  var q = $('q');
-  q.addEventListener('input', function () {
-    var term = q.value.trim().toLowerCase();
-    var ul = $('results');
-    ul.textContent = '';
-    $('resultsNote').textContent = '';
-    if (!term) { return; }
-    var found = nodes.filter(function (n) {
-      return (n.judul || '').toLowerCase().indexOf(term) !== -1 || (n.deskripsi || '').toLowerCase().indexOf(term) !== -1;
+  // Tombol Buka Semua & Tutup Semua Gedung
+  var expandAllBtn = $('expandAllBtn');
+  var collapseAllBtn = $('collapseAllBtn');
+  if (expandAllBtn) {
+    expandAllBtn.addEventListener('click', function () {
+      document.querySelectorAll('.k3d-gedung-item').forEach(function (el) {
+        el.classList.add('open');
+        var body = el.querySelector('.k3d-gedung-body');
+        if (body) { body.hidden = false; }
+      });
     });
-    found.slice(0, 15).forEach(function (n) { ul.appendChild(makeItem(n, true)); });
-    $('resultsNote').textContent = found.length
-      ? (found.length > 15 ? 'Menampilkan 15 dari ' + found.length + ' hasil. Perjelas kata kunci.' : found.length + ' hasil.')
-      : 'Tidak ada gedung, ruang, barang, atau area yang cocok.';
-    markBrowse();
-  });
+  }
+  if (collapseAllBtn) {
+    collapseAllBtn.addEventListener('click', function () {
+      document.querySelectorAll('.k3d-gedung-item').forEach(function (el) {
+        el.classList.remove('open');
+        var body = el.querySelector('.k3d-gedung-body');
+        if (body) { body.hidden = true; }
+      });
+    });
+  }
+
+  // Pencarian
+  var q = $('q');
+  var qClear = $('qClear');
+  if (q) {
+    q.addEventListener('input', function () {
+      var term = q.value.trim().toLowerCase();
+      var ul = $('results');
+      ul.textContent = '';
+      $('resultsNote').textContent = '';
+      if (qClear) { qClear.classList.toggle('d-none', !q.value); }
+      if (!term) { return; }
+      var found = nodes.filter(function (n) {
+        return (n.judul || '').toLowerCase().indexOf(term) !== -1 || (n.deskripsi || '').toLowerCase().indexOf(term) !== -1;
+      });
+      found.slice(0, 15).forEach(function (n) { ul.appendChild(makeItem(n, true)); });
+      $('resultsNote').textContent = found.length
+        ? (found.length > 15 ? 'Menampilkan 15 dari ' + found.length + ' hasil. Perjelas kata kunci.' : found.length + ' hasil.')
+        : 'Tidak ada gedung, ruang, barang, atau area yang cocok.';
+      markBrowse();
+    });
+  }
+  if (qClear) {
+    qClear.addEventListener('click', function () {
+      if (!q) { return; }
+      q.value = '';
+      qClear.classList.add('d-none');
+      $('results').textContent = '';
+      $('resultsNote').textContent = '';
+      q.focus();
+    });
+  }
 
   /* ---------- mode karakter / avatar jelajah (tahap 5a) ---------- */
   var spawnModal = $('spawnModal');
@@ -883,6 +1177,15 @@
     avatarCtrl.mulaiJelajah(spawnPos, spawnYaw, floorY, lantaiId);
     setStatus('Mode Jelajah Aktif. Gunakan WASD atau Joystick untuk berjalan, Shift untuk lari, V untuk alih kamera 1P/3P.');
   });
+
+  // Inisialisasi Bootstrap Tooltips pada tombol bertitel
+  if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+    setTimeout(function () {
+      document.querySelectorAll('.k3d-btn-icon[title], .k3d-floating-toggle[title]').forEach(function (el) {
+        try { new bootstrap.Tooltip(el, { container: 'body' }); } catch (e) {}
+      });
+    }, 300);
+  }
 
   load();
 })();
