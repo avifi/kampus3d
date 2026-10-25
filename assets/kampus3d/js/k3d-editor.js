@@ -67,7 +67,9 @@
   function updateThemeUi(curTheme) {
     if (!themeBtn) { return; }
     var isDark = curTheme === 'dark';
-    if (themeIcon) { themeIcon.textContent = isDark ? '☀️' : '🌙'; }
+    if (themeIcon) {
+      themeIcon.className = isDark ? 'bi bi-sun-fill text-warning' : 'bi bi-moon-stars';
+    }
     if (themeText) { themeText.textContent = isDark ? 'Mode Terang' : 'Mode Gelap'; }
     themeBtn.setAttribute('title', isDark ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap');
   }
@@ -80,6 +82,37 @@
       setStatus('Tema diubah ke: ' + (nextTheme === 'dark' ? 'Mode Gelap' : 'Mode Terang'));
     });
   }
+
+  /* ---------- tab navigasi panel kiri ---------- */
+  var sidebarTabBtns = document.querySelectorAll('.k3d-sidebar-tabs .k3d-tab-btn');
+  var sidebarTabPanes = document.querySelectorAll('.k3d-sidebar-content .k3d-tab-pane');
+  function setSidebarTab(tabId) {
+    if (!tabId) { return; }
+    var targetBtn = document.querySelector('.k3d-sidebar-tabs .k3d-tab-btn[data-tab="' + tabId + '"]');
+    if (!targetBtn && sidebarTabBtns.length > 0) {
+      targetBtn = sidebarTabBtns[0];
+      tabId = targetBtn.getAttribute('data-tab');
+    }
+    sidebarTabBtns.forEach(function (btn) {
+      var isTarget = btn.getAttribute('data-tab') === tabId;
+      btn.classList.toggle('active', isTarget);
+      btn.setAttribute('aria-selected', String(isTarget));
+    });
+    sidebarTabPanes.forEach(function (pane) {
+      var isTarget = pane.id === tabId;
+      pane.hidden = !isTarget;
+      pane.classList.toggle('active', isTarget);
+    });
+    try { localStorage.setItem('k3d_editor_tab', tabId); } catch (e) {}
+  }
+  sidebarTabBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      setSidebarTab(btn.getAttribute('data-tab'));
+    });
+  });
+  var initialTab = 'tabObjek';
+  try { initialTab = localStorage.getItem('k3d_editor_tab') || 'tabObjek'; } catch (e) {}
+  setSidebarTab(initialTab);
 
   /* ---------- jalur petunjuk arah (tahap 4b) ---------- */
   var jalur = { titik: [], ruas: [] };

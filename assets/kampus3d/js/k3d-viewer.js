@@ -1178,15 +1178,6 @@
     setStatus('Mode Jelajah Aktif. Gunakan WASD atau Joystick untuk berjalan, Shift untuk lari, V untuk alih kamera 1P/3P.');
   });
 
-  // Inisialisasi Bootstrap Tooltips pada tombol bertitel
-  if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
-    setTimeout(function () {
-      document.querySelectorAll('.k3d-btn-icon[title], .k3d-floating-toggle[title]').forEach(function (el) {
-        try { new bootstrap.Tooltip(el, { container: 'body' }); } catch (e) {}
-      });
-    }, 300);
-  }
-
   load();
 })();
 

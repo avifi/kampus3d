@@ -212,8 +212,8 @@ $v = time();
       </div>
     </div>
     <div class="k3d-spawn-footer">
-      <button class="btn btn-sm btn-outline-secondary" id="spawnCancel" type="button"><i class="bi bi-x-circle me-1"></i> Batal</button>
-      <button class="btn btn-sm btn-success" id="spawnStart" type="button"><i class="bi bi-play-circle-fill me-1"></i> Mulai Jelajah</button>
+      <button class="btn btn-sm btn-outline-secondary" id="spawnCancel" type="button" title="Batal mode jelajah"><i class="bi bi-x-circle me-1"></i> Batal</button>
+      <button class="btn btn-sm btn-success" id="spawnStart" type="button" title="Mulai jelajah kampus dengan karakter 3D"><i class="bi bi-play-circle-fill me-1"></i> Mulai Jelajah</button>
     </div>
   </div>
 </div>
@@ -223,7 +223,6 @@ $v = time();
 <script src="<?php echo $a; ?>vendor/OrbitControls.js"></script>
 <script src="<?php echo $a; ?>vendor/GLTFLoader.js"></script>
 <script src="<?php echo $a; ?>vendor/DRACOLoader.js"></script>
-<script src="<?php echo $a; ?>vendor/bootstrap/bootstrap.bundle.min.js"></script>
 <script src="<?php echo $a; ?>js/k3d-core.js?v=<?php echo $v; ?>"></script>
 <script src="<?php echo $a; ?>js/k3d-jalur.js?v=<?php echo $v; ?>"></script>
 <script src="<?php echo $a; ?>js/k3d-avatar.js?v=<?php echo $v; ?>"></script>

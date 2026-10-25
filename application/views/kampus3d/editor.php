@@ -8,6 +8,7 @@ $v = time();
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Editor Kampus 3D</title>
 <script>(function(){var t='light';try{t=localStorage.getItem('k3d_theme')||'light';}catch(e){}document.documentElement.setAttribute('data-theme',t);})();</script>
+<link rel="stylesheet" href="<?php echo $a; ?>vendor/bootstrap/bootstrap-icons.min.css">
 <link rel="stylesheet" href="<?php echo $a; ?>css/kampus3d.css?v=<?php echo $v; ?>">
 </head>
 <body>
@@ -15,14 +16,14 @@ $v = time();
   <header class="top">
     <div class="brand">
       <h1>Editor Kampus 3D</h1>
-      <p>Tambah, atur posisi, dan terbitkan gedung, lantai, ruang, dan barang</p>
     </div>
     <div class="tools" role="toolbar" aria-label="Alat editor">
-      <button class="btn btn-theme" id="themeBtn" type="button" title="Ganti mode tema (Terang/Gelap)" aria-label="Ganti mode tema">
-        <span class="theme-icon" id="themeIcon" aria-hidden="true">🌙</span>
-        <span class="theme-text" id="themeText">Mode Gelap</span>
+      <button class="btn btn-theme k3d-btn-icon" id="themeBtn" type="button" title="Ganti mode tema (Terang/Gelap)" aria-label="Ganti mode tema">
+        <i class="bi bi-moon-stars" id="themeIcon" aria-hidden="true"></i>
+        <span class="sr-only" id="themeText">Mode Gelap</span>
       </button>
       <div class="quality-wrap" title="Kualitas render & bayangan editor">
+        <span class="quality-icon" aria-hidden="true"><i class="bi bi-sliders"></i></span>
         <label for="qualitySelect" class="sr-only">Kualitas</label>
         <select class="btn quality-select" id="qualitySelect" aria-label="Kualitas render">
           <option value="tinggi">Kualitas: Tinggi</option>
@@ -31,136 +32,208 @@ $v = time();
         </select>
       </div>
       <span class="sep" aria-hidden="true"></span>
-      <button class="btn" id="m-translate" type="button" aria-pressed="true">Pindah<kbd>W</kbd></button>
-      <button class="btn" id="m-rotate" type="button" aria-pressed="false">Putar<kbd>E</kbd></button>
-      <button class="btn" id="m-scale" type="button" aria-pressed="false">Skala<kbd>R</kbd></button>
-      <label class="check"><input type="checkbox" id="snap" checked> Snap</label>
+      <button class="btn k3d-btn-icon" id="m-translate" type="button" aria-pressed="true" title="Mode Pindah objek (Shortcut: W)" aria-label="Pindah (W)">
+        <i class="bi bi-arrows-move"></i>
+      </button>
+      <button class="btn k3d-btn-icon" id="m-rotate" type="button" aria-pressed="false" title="Mode Putar objek (Shortcut: E)" aria-label="Putar (E)">
+        <i class="bi bi-arrow-repeat"></i>
+      </button>
+      <button class="btn k3d-btn-icon" id="m-scale" type="button" aria-pressed="false" title="Mode Skala objek (Shortcut: R)" aria-label="Skala (R)">
+        <i class="bi bi-arrows-angle-expand"></i>
+      </button>
+      <label class="check" title="Tempel pergerakan ke grid/kelipatan tertentu">
+        <input type="checkbox" id="snap" checked> <i class="bi bi-grid-3x3" aria-hidden="true"></i> Snap
+      </label>
       <span class="sep" aria-hidden="true"></span>
-      <button class="btn" id="undo" type="button" disabled>Urungkan</button>
-      <button class="btn" id="redo" type="button" disabled>Ulangi</button>
+      <button class="btn k3d-btn-icon" id="undo" type="button" disabled title="Urungkan perubahan (Shortcut: Ctrl+Z)" aria-label="Urungkan (Ctrl+Z)">
+        <i class="bi bi-arrow-counterclockwise"></i>
+      </button>
+      <button class="btn k3d-btn-icon" id="redo" type="button" disabled title="Ulangi perubahan (Shortcut: Ctrl+Y)" aria-label="Ulangi (Ctrl+Y)">
+        <i class="bi bi-arrow-clockwise"></i>
+      </button>
       <span class="sep" aria-hidden="true"></span>
-      <button class="btn" id="resetCam" type="button">Reset kamera</button>
-      <button class="btn" id="previewBtn" type="button" aria-pressed="false">Pratinjau</button>
-      <a class="btn" id="publicLink" href="<?php echo html_escape($cfg['urlPublik']); ?>" target="_blank" rel="noopener">Halaman publik</a>
+      <button class="btn k3d-btn-icon" id="resetCam" type="button" title="Kembalikan sudut pandang kamera ke posisi awal" aria-label="Reset kamera">
+        <i class="bi bi-compass"></i>
+      </button>
+      <button class="btn k3d-btn-icon" id="previewBtn" type="button" aria-pressed="false" title="Pratinjau tampilan seperti di halaman publik" aria-label="Pratinjau">
+        <i class="bi bi-eye"></i>
+      </button>
+      <a class="btn k3d-btn-icon" id="publicLink" href="<?php echo html_escape($cfg['urlPublik']); ?>" target="_blank" rel="noopener" title="Buka halaman publik di tab baru" aria-label="Halaman publik">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
       <span class="sep" aria-hidden="true"></span>
       <span class="chip" id="saveChip" role="status">Memuat&hellip;</span>
-      <button class="btn primary" id="saveBtn" type="button" disabled>Simpan</button>
+      <button class="btn primary k3d-btn-icon" id="saveBtn" type="button" disabled title="Simpan semua perubahan ke server" aria-label="Simpan">
+        <i class="bi bi-floppy"></i>
+      </button>
       <span class="sep" aria-hidden="true"></span>
-      <span class="role-badge <?php echo html_escape($cfg['role']); ?>"><?php echo $cfg['role'] === 'superadmin' ? 'Superadmin' : 'Admin Unit'; ?></span>
+      <span class="role-badge <?php echo html_escape($cfg['role']); ?>"><i class="bi bi-shield-lock" aria-hidden="true"></i> <?php echo $cfg['role'] === 'superadmin' ? 'Superadmin' : 'Admin Unit'; ?></span>
       <?php if ($cfg['role'] === 'superadmin'): ?>
-        <button class="btn" id="btnKelolaUnit" type="button" title="Kelola wewenang gedung untuk admin unit">Wewenang Unit</button>
-        <button class="btn" id="btnAvatarSetting" type="button" title="Pengaturan karakter mode jelajah publik">Pengaturan Karakter</button>
+        <button class="btn k3d-btn-icon" id="btnKelolaUnit" type="button" title="Kelola wewenang gedung untuk admin unit" aria-label="Wewenang Unit">
+          <i class="bi bi-building-gear"></i>
+        </button>
+        <button class="btn k3d-btn-icon" id="btnAvatarSetting" type="button" title="Pengaturan karakter mode jelajah publik" aria-label="Pengaturan Karakter">
+          <i class="bi bi-person-gear"></i>
+        </button>
       <?php endif; ?>
       <?php if ( ! empty($cfg['urlLogout'])): ?>
         <span class="sep" aria-hidden="true"></span>
-        <a class="btn" href="<?php echo html_escape($cfg['urlLogout']); ?>" title="Keluar dari akun admin">Keluar (<?php echo html_escape($cfg['user']); ?>)</a>
+        <a class="btn k3d-btn-icon" href="<?php echo html_escape($cfg['urlLogout']); ?>" title="Keluar dari akun admin (<?php echo html_escape($cfg['user']); ?>)" aria-label="Keluar">
+          <i class="bi bi-box-arrow-right"></i>
+        </a>
       <?php endif; ?>
     </div>
   </header>
 
-  <aside class="left" aria-label="Daftar objek">
-    <section>
-      <h2 class="h">Tambah objek</h2>
-      <div class="field">
-        <label for="addType">Tipe</label>
-        <select id="addType">
-          <option value="gedung">Gedung</option>
-          <option value="lantai">Lantai</option>
-          <option value="ruang">Ruang</option>
-          <option value="barang">Barang</option>
-        </select>
+  <aside class="left" aria-label="Panel kontrol editor">
+    <nav class="k3d-sidebar-tabs" role="tablist" aria-label="Tab Editor">
+      <button class="k3d-tab-btn active" type="button" role="tab" id="tabBtnObjek" data-tab="tabObjek" aria-selected="true" aria-controls="tabObjek" title="Daftar & Hierarki Objek">
+        <i class="bi bi-diagram-3"></i>
+        <span>Objek</span>
+      </button>
+      <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnTambah" data-tab="tabTambah" aria-selected="false" aria-controls="tabTambah" title="Tambah Objek 3D">
+        <i class="bi bi-plus-circle"></i>
+        <span>Tambah</span>
+      </button>
+      <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnArea" data-tab="tabArea" aria-selected="false" aria-controls="tabArea" title="Gambar Area Outdoor">
+        <i class="bi bi-tree"></i>
+        <span>Area</span>
+      </button>
+      <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnPustaka" data-tab="tabPustaka" aria-selected="false" aria-controls="tabPustaka" title="Pustaka Model 3D">
+        <i class="bi bi-collection"></i>
+        <span>Pustaka</span>
+      </button>
+      <?php if ($cfg['role'] === 'superadmin'): ?>
+      <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnJalur" data-tab="tabJalur" aria-selected="false" aria-controls="tabJalur" title="Jalur Petunjuk Arah">
+        <i class="bi bi-signpost-2"></i>
+        <span>Jalur</span>
+      </button>
+      <?php endif; ?>
+    </nav>
+
+    <div class="k3d-sidebar-content">
+      <!-- Tab 1: Daftar Objek (Hierarki Tree) -->
+      <div class="k3d-tab-pane active" id="tabObjek" role="tabpanel" aria-labelledby="tabBtnObjek">
+        <section>
+          <h2 class="h">Daftar objek <span id="count"></span></h2>
+          <ul class="tree" id="tree"></ul>
+        </section>
       </div>
-      <div class="field">
-        <label for="addKategori">Kategori model saat mengunggah (opsional)</label>
-        <input id="addKategori" list="katList" maxlength="60" placeholder="umum" autocomplete="off">
-        <datalist id="katList"></datalist>
+
+      <!-- Tab 2: Tambah Objek -->
+      <div class="k3d-tab-pane" id="tabTambah" role="tabpanel" aria-labelledby="tabBtnTambah" hidden>
+        <section>
+          <h2 class="h">Tambah objek</h2>
+          <div class="field">
+            <label for="addType">Tipe</label>
+            <select id="addType">
+              <option value="gedung">Gedung</option>
+              <option value="lantai">Lantai</option>
+              <option value="ruang">Ruang</option>
+              <option value="barang">Barang</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="addKategori">Kategori model saat mengunggah (opsional)</label>
+            <input id="addKategori" list="katList" maxlength="60" placeholder="umum" autocomplete="off">
+            <datalist id="katList"></datalist>
+          </div>
+          <div class="row">
+            <label class="btn primary" for="fileIn" style="cursor:pointer" title="Unggah model 3D berkas .glb">Unggah .glb</label>
+            <button class="btn" id="addBox" type="button" title="Tambah objek kotak 3D baru">Tambah kotak</button>
+          </div>
+          <input id="fileIn" type="file" accept=".glb" multiple hidden>
+          <p class="note">Atau seret berkas .glb ke kanvas. Maksimal <span id="maxMb"></span> MB per berkas. Objek baru masuk ke objek yang sedang dipilih jika tipenya cocok (lantai di gedung, ruang di lantai, barang di ruang).</p>
+        </section>
       </div>
-      <div class="row">
-        <label class="btn primary" for="fileIn" style="cursor:pointer">Unggah .glb</label>
-        <button class="btn" id="addBox" type="button">Tambah kotak</button>
+
+      <!-- Tab 3: Area Outdoor -->
+      <div class="k3d-tab-pane" id="tabArea" role="tabpanel" aria-labelledby="tabBtnArea" hidden>
+        <section>
+          <h2 class="h">Area outdoor</h2>
+          <div class="field">
+            <label for="areaType">Jenis</label>
+            <select id="areaType">
+              <option value="jalan">Jalan</option>
+              <option value="sungai">Sungai</option>
+              <option value="taman">Taman</option>
+              <option value="lapangan">Lapangan</option>
+              <option value="parkir">Parkir</option>
+            </select>
+          </div>
+          <button class="btn primary" id="areaDraw" type="button" title="Mulai menggambar area outdoor pada kanvas">Gambar area</button>
+          <div class="row" id="areaDrawBar" hidden>
+            <button class="btn primary" id="areaDone" type="button">Selesai</button>
+            <button class="btn" id="areaUndoPt" type="button">Hapus titik terakhir</button>
+            <button class="btn" id="areaCancel" type="button">Batal</button>
+          </div>
+          <p class="note" id="areaNote">Klik "Gambar area", lalu klik di tanah untuk menaruh titik. Jalan dan sungai butuh minimal 2 titik, taman, lapangan, dan parkir minimal 3 titik. Selesai dengan tombol, Enter, atau klik dua kali.</p>
+        </section>
       </div>
-      <input id="fileIn" type="file" accept=".glb" multiple hidden>
-      <p class="note">Atau seret berkas .glb ke kanvas. Maksimal <span id="maxMb"></span> MB per berkas. Objek baru masuk ke objek yang sedang dipilih jika tipenya cocok (lantai di gedung, ruang di lantai, barang di ruang).</p>
-    </section>
-    <section>
-      <h2 class="h">Area outdoor</h2>
-      <div class="field">
-        <label for="areaType">Jenis</label>
-        <select id="areaType">
-          <option value="jalan">Jalan</option>
-          <option value="sungai">Sungai</option>
-          <option value="taman">Taman</option>
-          <option value="lapangan">Lapangan</option>
-          <option value="parkir">Parkir</option>
-        </select>
+
+      <!-- Tab 4: Library Model -->
+      <div class="k3d-tab-pane" id="tabPustaka" role="tabpanel" aria-labelledby="tabBtnPustaka" hidden>
+        <section>
+          <h2 class="h">Library model <span id="libCount"></span></h2>
+          <div class="field">
+            <label for="libQ">Cari model</label>
+            <input id="libQ" type="search" placeholder="Nama model" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="libCat">Kategori</label>
+            <select id="libCat"></select>
+          </div>
+          <ul class="liblist" id="libList"></ul>
+          <p class="note" id="libEmpty" hidden></p>
+          <div id="libDetail" class="box" hidden>
+            <button class="btn primary" id="libAdd" type="button">Tambahkan ke kampus</button>
+            <div class="field"><label for="lib-nama">Nama model</label><input id="lib-nama" maxlength="150" autocomplete="off"></div>
+            <div class="field"><label for="lib-kat">Kategori</label><input id="lib-kat" list="katList" maxlength="60" autocomplete="off"></div>
+            <p class="info-line" id="libInfo"></p>
+            <div class="row">
+              <button class="btn" id="libSave" type="button">Simpan nama</button>
+              <label class="btn" for="libReplaceIn" style="cursor:pointer">Ganti berkas</label>
+              <button class="btn danger" id="libDel" type="button">Hapus model</button>
+            </div>
+            <input id="libReplaceIn" type="file" accept=".glb" hidden>
+            <p class="note" id="libHint"></p>
+          </div>
+          <p class="note">Ubah nama, ganti berkas, dan hapus model langsung berlaku di server, tidak menunggu tombol Simpan.</p>
+        </section>
       </div>
-      <button class="btn primary" id="areaDraw" type="button">Gambar area</button>
-      <div class="row" id="areaDrawBar" hidden>
-        <button class="btn primary" id="areaDone" type="button">Selesai</button>
-        <button class="btn" id="areaUndoPt" type="button">Hapus titik terakhir</button>
-        <button class="btn" id="areaCancel" type="button">Batal</button>
+
+      <?php if ($cfg['role'] === 'superadmin'): ?>
+      <!-- Tab 5: Jalur Petunjuk Arah -->
+      <div class="k3d-tab-pane" id="tabJalur" role="tabpanel" aria-labelledby="tabBtnJalur" hidden>
+        <section>
+          <h2 class="h">Jalur petunjuk arah <span id="jalurCount"></span></h2>
+          <div class="row" style="margin-bottom:8px;">
+            <label class="check"><input type="checkbox" id="jalurVisible" checked> Tampilkan jalur</label>
+            <button class="btn" id="jalurImportRoad" type="button" title="Otomatis buat titik dan ruas mengikuti garis tengah area jalan tahap 3">Import dari jalan</button>
+          </div>
+          <div class="field">
+            <label for="jalurAddJenis">Jenis titik baru</label>
+            <select id="jalurAddJenis">
+              <option value="jalur">Titik jalur umum</option>
+              <option value="gerbang">Gerbang / Titik awal</option>
+              <option value="pintu">Pintu masuk gedung / ruang</option>
+              <option value="tangga">Tangga antar-lantai</option>
+              <option value="lift">Lift antar-lantai</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="jalurAddLabel">Label titik (opsional)</label>
+            <input id="jalurAddLabel" placeholder="Contoh: Gerbang Utama / Pintu Rektorat" maxlength="80" autocomplete="off">
+          </div>
+          <div class="row">
+            <button class="btn primary" id="jalurAddBtn" type="button" title="Tambah titik rute baru dengan klik kanvas">Tambah titik (klik kanvas)</button>
+            <button class="btn" id="jalurConnectBtn" type="button" title="Hubungkan dua titik rute yang dipilih">Hubungkan 2 titik</button>
+          </div>
+          <p class="note" id="jalurHint">Aktifkan "Tambah titik" lalu klik di jalan, pintu gedung, atau koridor lantai untuk menaruh titik rute. Klik dua titik untuk menyambungnya dengan ruas jalan.</p>
+        </section>
       </div>
-      <p class="note" id="areaNote">Klik "Gambar area", lalu klik di tanah untuk menaruh titik. Jalan dan sungai butuh minimal 2 titik, taman, lapangan, dan parkir minimal 3 titik. Selesai dengan tombol, Enter, atau klik dua kali.</p>
-    </section>
-    <?php if ($cfg['role'] === 'superadmin'): ?>
-    <section>
-      <h2 class="h">Jalur petunjuk arah <span id="jalurCount"></span></h2>
-      <div class="row" style="margin-bottom:8px;">
-        <label class="check"><input type="checkbox" id="jalurVisible" checked> Tampilkan jalur</label>
-        <button class="btn" id="jalurImportRoad" type="button" title="Otomatis buat titik dan ruas mengikuti garis tengah area jalan tahap 3">Import dari jalan</button>
-      </div>
-      <div class="field">
-        <label for="jalurAddJenis">Jenis titik baru</label>
-        <select id="jalurAddJenis">
-          <option value="jalur">Titik jalur umum</option>
-          <option value="gerbang">Gerbang / Titik awal</option>
-          <option value="pintu">Pintu masuk gedung / ruang</option>
-          <option value="tangga">Tangga antar-lantai</option>
-          <option value="lift">Lift antar-lantai</option>
-        </select>
-      </div>
-      <div class="field">
-        <label for="jalurAddLabel">Label titik (opsional)</label>
-        <input id="jalurAddLabel" placeholder="Contoh: Gerbang Utama / Pintu Rektorat" maxlength="80" autocomplete="off">
-      </div>
-      <div class="row">
-        <button class="btn primary" id="jalurAddBtn" type="button">Tambah titik (klik kanvas)</button>
-        <button class="btn" id="jalurConnectBtn" type="button">Hubungkan 2 titik</button>
-      </div>
-      <p class="note" id="jalurHint">Aktifkan "Tambah titik" lalu klik di jalan, pintu gedung, atau koridor lantai untuk menaruh titik rute. Klik dua titik untuk menyambungnya dengan ruas jalan.</p>
-    </section>
-    <?php endif; ?>
-    <section>
-      <h2 class="h">Library model <span id="libCount"></span></h2>
-      <div class="field">
-        <label for="libQ">Cari model</label>
-        <input id="libQ" type="search" placeholder="Nama model" autocomplete="off">
-      </div>
-      <div class="field">
-        <label for="libCat">Kategori</label>
-        <select id="libCat"></select>
-      </div>
-      <ul class="liblist" id="libList"></ul>
-      <p class="note" id="libEmpty" hidden></p>
-      <div id="libDetail" class="box" hidden>
-        <button class="btn primary" id="libAdd" type="button">Tambahkan ke kampus</button>
-        <div class="field"><label for="lib-nama">Nama model</label><input id="lib-nama" maxlength="150" autocomplete="off"></div>
-        <div class="field"><label for="lib-kat">Kategori</label><input id="lib-kat" list="katList" maxlength="60" autocomplete="off"></div>
-        <p class="info-line" id="libInfo"></p>
-        <div class="row">
-          <button class="btn" id="libSave" type="button">Simpan nama</button>
-          <label class="btn" for="libReplaceIn" style="cursor:pointer">Ganti berkas</label>
-          <button class="btn danger" id="libDel" type="button">Hapus model</button>
-        </div>
-        <input id="libReplaceIn" type="file" accept=".glb" hidden>
-        <p class="note" id="libHint"></p>
-      </div>
-      <p class="note">Ubah nama, ganti berkas, dan hapus model langsung berlaku di server, tidak menunggu tombol Simpan.</p>
-    </section>
-    <section>
-      <h2 class="h">Daftar objek <span id="count"></span></h2>
-      <ul class="tree" id="tree"></ul>
-    </section>
+      <?php endif; ?>
+    </div>
   </aside>
 
   <main class="stage" id="stage">
@@ -236,14 +309,14 @@ $v = time();
         <p class="note">Seret titik putih di kanvas atau ubah angkanya. Koordinat dalam meter dari titik acuan kampus (X ke kanan, Z ke arah kamera awal).</p>
       </fieldset>
       <div class="actions">
-        <button class="btn" id="focusBtn" type="button">Fokus kamera</button>
-        <button class="btn na" id="groundBtn" type="button">Letakkan di lantai induk</button>
-        <button class="btn na" id="resetScale" type="button">Reset skala</button>
+        <button class="btn" id="focusBtn" type="button" title="Fokuskan kamera ke objek ini">Fokus kamera</button>
+        <button class="btn na" id="groundBtn" type="button" title="Letakkan objek di atas permukaan lantai induk">Letakkan di lantai induk</button>
+        <button class="btn na" id="resetScale" type="button" title="Kembalikan skala objek ke 1, 1, 1">Reset skala</button>
       </div>
       <div class="actions">
-        <button class="btn" id="dupFull" type="button">Salin dengan isi</button>
-        <button class="btn" id="dupShell" type="button">Salin kerangka</button>
-        <button class="btn danger" id="delBtn" type="button">Hapus</button>
+        <button class="btn" id="dupFull" type="button" title="Duplikasi objek beserta seluruh isinya">Salin dengan isi</button>
+        <button class="btn" id="dupShell" type="button" title="Duplikasi kerangka gedung/ruang tanpa barang">Salin kerangka</button>
+        <button class="btn danger" id="delBtn" type="button" title="Hapus objek ini">Hapus</button>
       </div>
       <div class="actions">
         <button class="btn" id="qrBtn" type="button" title="Buat & Cetak Kode QR untuk objek ini">Kode QR</button>

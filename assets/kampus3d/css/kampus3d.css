@@ -1089,3 +1089,64 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
     width: min(320px, 85vw);
   }
 }
+
+/* Sidebar Tabs Editor (Tahap 5d) */
+.k3d-sidebar-tabs {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+.k3d-sidebar-tabs .k3d-tab-btn {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.1;
+  text-align: center;
+  user-select: none;
+}
+.k3d-sidebar-tabs .k3d-tab-btn i {
+  font-size: 15px;
+  line-height: 1;
+}
+.k3d-sidebar-tabs .k3d-tab-btn:hover {
+  color: var(--fg);
+  background: rgba(127, 127, 127, 0.08);
+}
+.k3d-sidebar-tabs .k3d-tab-btn.active {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  font-weight: 600;
+}
+.k3d-sidebar-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.k3d-tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.k3d-tab-pane[hidden] {
+  display: none !important;
+}
