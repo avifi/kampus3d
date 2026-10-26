@@ -21,18 +21,40 @@ CREATE TABLE IF NOT EXISTS `k3d_library` (
   KEY `idx_kategori` (`kategori`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Objek di kampus: gedung > lantai > ruang > barang (tipe 'area' disiapkan untuk jalan/taman/lapangan).
+-- Pustaka media video/videotron untuk objek tipe 'layar'.
+CREATE TABLE IF NOT EXISTS `k3d_media` (
+  `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `nama`         VARCHAR(150) NOT NULL,
+  `file_video`   VARCHAR(80)  NOT NULL COMMENT 'nama berkas acak di folder upload media',
+  `file_asli`    VARCHAR(200) NOT NULL COMMENT 'nama berkas saat diunggah',
+  `file_poster`  VARCHAR(80)  NULL COMMENT 'nama berkas poster diam di folder upload media',
+  `ukuran_byte`  INT UNSIGNED NOT NULL DEFAULT 0,
+  `durasi_detik` DECIMAL(8,2) NOT NULL DEFAULT 0 COMMENT 'durasi video dalam detik',
+  `lebar`        INT UNSIGNED NULL COMMENT 'resolusi lebar piksel',
+  `tinggi`       INT UNSIGNED NULL COMMENT 'resolusi tinggi piksel',
+  `tipe_mime`    VARCHAR(50)  NOT NULL DEFAULT 'video/mp4',
+  `dibuat_pada`  DATETIME     NOT NULL,
+  `dibuat_oleh`  VARCHAR(64)  NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_file_video` (`file_video`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Objek di kampus: gedung > lantai > ruang > barang > layar (tipe 'area' untuk jalan/taman/lapangan).
 -- Posisi, rotasi, dan skala disimpan relatif terhadap induknya. Satuan: meter dan derajat.
 -- Titik (0,0,0) untuk objek tanpa induk = titik acuan kampus (disarankan: gerbang utama).
 CREATE TABLE IF NOT EXISTS `k3d_objek` (
   `id`                 INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `parent_id`          INT UNSIGNED NULL,
-  `tipe`               ENUM('gedung','lantai','ruang','barang','area') NOT NULL,
+  `tipe`               ENUM('gedung','lantai','ruang','barang','area','layar') NOT NULL,
   `subtipe`            VARCHAR(30)  NULL COMMENT 'dipakai area: jalan, taman, lapangan, parkir',
   `unit_nama`          VARCHAR(100) NULL COMMENT 'nama fakultas/unit penanggung jawab',
   `judul`              VARCHAR(120) NOT NULL DEFAULT '',
   `deskripsi`          TEXT NULL,
   `library_id`         INT UNSIGNED NULL,
+  `media_id`           INT UNSIGNED NULL COMMENT 'media video jika objek bertipe layar',
+  `layar_loop`         TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '1 = putar ulang otomatis',
+  `layar_jarak`        DECIMAL(6,2) NOT NULL DEFAULT 20.00 COMMENT 'jarak kamera putar otomatis (meter)',
+  `layar_target`       VARCHAR(60)  NOT NULL DEFAULT 'LAYAR' COMMENT 'nama material target pada model .glb',
   `pos_x`              DECIMAL(10,3) NOT NULL DEFAULT 0,
   `pos_y`              DECIMAL(10,3) NOT NULL DEFAULT 0,
   `pos_z`              DECIMAL(10,3) NOT NULL DEFAULT 0,
@@ -42,7 +64,7 @@ CREATE TABLE IF NOT EXISTS `k3d_objek` (
   `scale_x`            DECIMAL(8,3)  NOT NULL DEFAULT 1,
   `scale_y`            DECIMAL(8,3)  NOT NULL DEFAULT 1,
   `scale_z`            DECIMAL(8,3)  NOT NULL DEFAULT 1,
-  `ukuran_x`           DECIMAL(10,3) NULL COMMENT 'ukuran kotak pengganti bila belum ada model',
+  `ukuran_x`           DECIMAL(10,3) NULL COMMENT 'ukuran kotak pengganti bila belum ada model / ukuran layar',
   `ukuran_y`           DECIMAL(10,3) NULL,
   `ukuran_z`           DECIMAL(10,3) NULL,
   `geometri_json`      MEDIUMTEXT NULL COMMENT 'cadangan untuk area outdoor (daftar titik)',
@@ -57,8 +79,10 @@ CREATE TABLE IF NOT EXISTS `k3d_objek` (
   KEY `idx_parent` (`parent_id`),
   KEY `idx_tipe_status` (`tipe`,`status`),
   KEY `idx_library` (`library_id`),
+  KEY `idx_media` (`media_id`),
   CONSTRAINT `fk_k3d_objek_parent`  FOREIGN KEY (`parent_id`)  REFERENCES `k3d_objek` (`id`)  ON DELETE CASCADE,
-  CONSTRAINT `fk_k3d_objek_library` FOREIGN KEY (`library_id`) REFERENCES `k3d_library` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_k3d_objek_library` FOREIGN KEY (`library_id`) REFERENCES `k3d_library` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_k3d_objek_media`   FOREIGN KEY (`media_id`)   REFERENCES `k3d_media` (`id`)   ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Jejak perubahan: satu baris untuk setiap penyimpanan dari editor.

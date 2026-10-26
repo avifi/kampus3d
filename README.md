@@ -1,40 +1,45 @@
-# Kampus 3D untuk CodeIgniter 3 (Tahap 5: Mode Karakter & Optimasi)
+# Kampus 3D untuk CodeIgniter 3 (Tahap 6: Layar & Videotron 3D dengan Video Player)
 
-Modul untuk menampilkan kampus dalam 3D di browser, dengan editor admin untuk menempatkan gedung, lantai, ruang, barang, area luar, petunjuk arah navigasi dari gerbang ke ruangan, serta **mode jelajah karakter (avatar 1P/3P)** dengan performa tinggi.
+Modul untuk menampilkan kampus dalam 3D di browser, dengan editor admin untuk menempatkan gedung, lantai, ruang, barang, area luar, **layar videotron video interaktif**, petunjuk arah navigasi dari gerbang ke ruangan, serta **mode jelajah karakter (avatar 1P/3P)** dengan performa tinggi.
 
 - **Halaman publik**:
   - Pencarian gedung, ruang, & fasilitas, kartu info, tautan langsung ke objek (`#objek-ID`), pencetakan & pemindaian kode QR, pengatur lantai & mode potong atap.
+  - **Layar & Videotron 3D Interaktif (Tahap 6)**: Layar videotron mandiri atau menempel pada model `.glb` yang memutar video MP4/WebM secara otomatis dengan tekstur video WebGL Three.js. Video dibisukan (muted) pada awal pemutaran agar diizinkan autoplay oleh browser, dilengkapi tombol aktivasi suara interaktif di kartu info dan tombol fallback "Buka di YouTube".
+  - **Efisiensi & Distance Culling**: Video hanya berputar saat layar berada dalam jarak tertentu dari kamera (misal 20 m). Di luar jarak tersebut, video otomatis dijeda (paused) dan digantikan oleh poster/gambar diam atau tekstur standby dot-matrix procedurial, mencegah overhead beban decoding GPU/CPU bila ada banyak videotron di kampus.
   - **Petunjuk arah visual 3D dari gerbang ke ruangan** lengkap dengan navigasi belokan langkah demi langkah ("jalan 50 m, belok kanan, naik tangga ke lantai 2").
   - **Mode Karakter (Jelajah 3D)**: Pengunjung dapat menjelajahi kampus dari sudut pandang orang ketiga (3P) atau orang pertama (1P), kontrol desktop (WASD + mouse look / pointer lock) atau mobile HP (virtual analog joystick), tabrakan dinding otomatis berbasis bounding box tanpa data ekstra, transit tangga/lift antar-lantai, dan interaksi objek di dekat karakter.
   - **Opsi Kualitas Grafis**: Pilihan kualitas rendering (Tinggi dengan bayangan lembut PCF, Sedang, Rendah hemat daya untuk HP lama).
-- **Optimasi & Realisme (Tahap 5b)**:
-  - **GPU Instancing (`THREE.InstancedMesh`)**: Me-render objek berulang (misal puluhan kursi kelas atau pohon taman) dalam 1 draw call tanpa mengurangi kemampuan klik / kartu info.
-  - **Pemuatan Bertahap (Distance LOD Culling)**: Interior gedung di luar jarak pandang disembunyikan otomatis untuk menghemat ratusan ribu poligon dan baterai ponsel.
-  - **Pencahayaan & Bayangan Lembut**: Directional sun light dengan normal bias, hemisphere sky light, dan bayangan alami yang jatuh di atas tanah dan bangunan.
-  - **Dukungan Penuh Kompresi Google Draco & Tekstur**: Pemuatan instan model `.glb` terkompresi hingga 85-90% lebih kecil.
-- **Editor admin**: unggah model `.glb`, atur posisi/rotasi/skala dengan gizmo, isi judul dan deskripsi, status draft/terbit, salin objek, kontrol bentrok penyimpanan bersamaan (optimistic locking), pembagian peran unit (Admin Fakultas / Superadmin), editor jalur navigasi, serta formulir pengaturan kecepatan/model karakter bawaan.
+- **Optimasi & Realisme**:
+  - **GPU Instancing (`THREE.InstancedMesh`)**: Me-render objek berulang dalam 1 draw call.
+  - **Pemuatan Bertahap (Distance LOD Culling)**: Interior gedung di luar jarak pandang disembunyikan otomatis.
+  - **Pencahayaan & Bayangan Lembut**: Directional sun light dengan normal bias, hemisphere sky light, dan bayangan alami.
+  - **Dukungan Penuh Kompresi Google Draco & Tekstur**: Pemuatan instan model `.glb` terkompresi.
+- **Editor admin**: katalog Media video terpisah dari pustaka model, ekstraksi otomatis gambar poster & durasi video di sisi klien, unggah video MP4/WebM dengan validasi magic bytes biner di server, pengaturan objek layar (ukuran, sumber video, looping, jarak auto-play, target material submesh model 3D), gizmo transformasi, status draft/terbit, salin objek, kontrol bentrok penyimpanan bersamaan (optimistic locking), serta pembagian wewenang unit.
 - **Offline & Mandiri**: Semua pustaka JavaScript (Three.js r128, OrbitControls, TransformControls, GLTFLoader, dekoder WebAssembly Draco) sudah tersimpan lokal di folder `assets`, berjalan offline tanpa ketergantungan CDN internet luar.
 
 ## Isi paket
 
 ```
-sql/kampus3d.sql                          skema database lengkap (termasuk k3d_jalur & k3d_setting)
+sql/kampus3d.sql                          skema database lengkap (termasuk k3d_media & tipe layar)
 sql/tahap4a.sql                           skrip migrasi tahap 4a (optimistic locking & role unit)
 sql/tahap4b.sql                           skrip migrasi tahap 4b (tabel graf jalur petunjuk arah)
 sql/tahap5a.sql                           skrip migrasi tahap 5a (tabel k3d_setting mode karakter)
-application/config/kampus3d.php           pengaturan modul & default avatar
+sql/tahap6a.sql                           skrip migrasi tahap 6a (tabel k3d_media & kolom layar k3d_objek)
+application/config/kampus3d.php           pengaturan modul, batas upload media & default avatar
 application/controllers/Kampus3d.php          halaman publik + data JSON publik
-application/controllers/Kampus3d_admin.php    editor admin + simpan + unggah + setting avatar
+application/controllers/Kampus3d_admin.php    editor admin + simpan + unggah model + unggah media
 application/models/Kampus3d_model.php
 application/views/kampus3d/publik.php
 application/views/kampus3d/editor.php
 assets/kampus3d/                          css, js (k3d-core, k3d-jalur, k3d-avatar, k3d-qr, k3d-viewer, k3d-editor), vendor
 uploads/kampus3d/models/                  folder model .glb
+uploads/kampus3d/media/                   folder berkas video & poster videotron
 ```
 
 ## Memperbarui dari tahap sebelumnya
 
-Timpa folder `application`, `assets`, dan `uploads` dengan isi paket ini. **Tidak ada perubahan database**: kolom `subtipe`, `geometri_json`, dan tipe `area` sudah disiapkan sejak tahap 1, jadi `sql/kampus3d.sql` tidak perlu dijalankan lagi. Data dan model yang sudah ada tetap dipakai. Bila Anda sudah mengubah `application/config/kampus3d.php`, jangan timpa berkas itu (isinya tidak berubah).
+1. Jalankan skrip pembaruan database `sql/tahap6a.sql` pada database `kampus3d` Anda untuk menambahkan tabel `k3d_media`, opsi tipe `layar` pada `k3d_objek`, serta kolom `media_id`, `layar_loop`, `layar_jarak`, dan `layar_target`.
+2. Timpa folder `application`, `assets`, dan `uploads` dengan isi paket ini. Folder baru `uploads/kampus3d/media/` otomatis tersedia untuk menampung video dan poster. Data dan model yang sudah ada tetap aman dan terjaga.
 
 ## Prasyarat
 
@@ -77,10 +82,11 @@ $route['admin/kampus3d/(:any)']      = 'kampus3d_admin/$1';
 
 - Panel kiri "Area outdoor": pilih jenis (jalan, taman, lapangan, parkir), klik **Gambar area**, lalu klik di tanah untuk menaruh titik. Titik mengikuti **Snap** (0,5 m). Selesai dengan tombol **Selesai**, tombol Enter, atau klik dua kali. Esc membatalkan.
 - Jalan butuh minimal 2 titik dan punya lebar (bawaan 6 m, 0,5 sampai 60 m). Taman, lapangan, dan parkir adalah poligon tertutup dengan minimal 3 titik.
-- Area yang dipilih menampilkan titik putih di kanvas. Seret titik untuk mengubah bentuk. Di panel kanan ada daftar titik dengan koordinat X dan Z (meter dari titik acuan kampus) yang bisa diketik, tombol **Tambah titik**, tombol × per titik, dan **Geser** untuk memindahkan seluruh area.
+- Area yang dipilih menampilkan titik putih di kanvas. Seret titik untuk mengubah bentuk. Di panel kanan ada daftar titik dengan koordinat X, Y (elevasi/tinggi tanjakan atau turunan), dan Z (meter dari titik acuan kampus) yang bisa diketik, tombol **Tambah titik**, tombol × per titik, dan **Geser** untuk memindahkan seluruh area (termasuk geser ketinggian Y).
+- **Tanjakan / Turunan & Mode Karakter (Avatar)**: Jalan atau ramp outdoor yang memiliki perbedaan ketinggian Y antar-titik otomatis di-render sebagai tanjakan 3D dengan dinding penopang samping. Karakter avatar (1P/3P) secara otomatis akan menapak naik dan turun mengikuti kontur kemiringan jalan saat melintas.
 - Jenis area bisa diganti kapan saja selama jumlah titiknya cukup. Salin dengan isi dan Gandakan berderet bekerja untuk area (salinan digeser).
 - Area tidak punya induk, posisi, rotasi, atau skala: bentuknya sepenuhnya ditentukan oleh titiknya. Karena itu gizmo tidak muncul untuk area.
-- Area digambar sebagai lapisan tipis di atas tanah. Bila dua area bertumpuk, urutan atasnya: jalan, parkir, lapangan, taman. Halaman publik mencantumkan area di daftar terpisah "Area luar".
+- Area digambar di atas tanah atau elevated sesuai ketinggiannya. Bila dua area bertumpuk pada ketinggian yang sama, urutan atasnya: jalan, parkir, lapangan, taman. Halaman publik mencantumkan area di daftar terpisah "Area luar".
 
 ### Katalog library
 

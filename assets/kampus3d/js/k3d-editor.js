@@ -25,6 +25,9 @@
   var nodes = [];
   var deleted = [];           // id di database yang akan dihapus saat menyimpan
   var library = [];
+  var mediaList = [];
+  var selectedMedia = null;
+  var mediaDelTimer = 0;
   var tempSeq = 0;
   var selectedId = null;
   var mode = 'translate';
@@ -150,7 +153,8 @@
   function mk(o) {
     return Object.assign({
       id: newId(), parent_id: null, tipe: 'barang', subtipe: null, judul: '', deskripsi: '',
-      library_id: null, pos_x: 0, pos_y: 0, pos_z: 0, rot_x: 0, rot_y: 0, rot_z: 0,
+      library_id: null, media_id: null, layar_loop: 1, layar_jarak: 20, layar_target: 'LAYAR',
+      pos_x: 0, pos_y: 0, pos_z: 0, rot_x: 0, rot_y: 0, rot_z: 0,
       scale_x: 1, scale_y: 1, scale_z: 1, ukuran: null, geometri: null, status: 'draft',
       versi: 1
     }, o);
@@ -222,6 +226,7 @@
     updateHistoryButtons();
     refreshDirty();
     renderLibrary();
+    renderMedia();
     renderJalur();
   }
   function loadSnapshot(s) {
@@ -233,6 +238,7 @@
     updateHistoryButtons();
     refreshDirty();
     renderLibrary();
+    renderMedia();
     renderJalur();
   }
   function undo() { if (hIdx > 0) { hIdx--; loadSnapshot(history[hIdx]); } }
@@ -468,8 +474,13 @@
     fillCopyOptions(n);
     fillTransform();
     var isArea = n.tipe === 'area';
+    var isLayar = n.tipe === 'layar';
     document.querySelectorAll('.na').forEach(function (el) { el.hidden = isArea; });
     $('areaBox').hidden = !isArea;
+    if ($('layarBox')) {
+      $('layarBox').hidden = !isLayar;
+      if (isLayar) { fillLayarProps(n); }
+    }
     if (isArea) {
       $('f-subtipe').value = n.subtipe || 'taman';
       var garis = K3D.AREA[n.subtipe || 'taman'].kind === 'garis';
@@ -726,6 +737,410 @@
       setStatus('Berkas diganti.' + (u ? ' ' + u + ' objek kini memakai model baru, periksa ukuran dan posisinya.' : ''), u ? 'warn' : '');
     }).catch(function (err) { setStatus('Gagal mengganti berkas: ' + ((err && err.message) || err), 'warn'); });
   });
+
+  /* ---------- katalog media video / videotron ---------- */
+  function mediaById(id) {
+    for (var i = 0; i < mediaList.length; i++) { if (mediaList[i].id === id) { return mediaList[i]; } }
+    return null;
+  }
+  function mediaLocalUse(id) {
+    var c = 0;
+    nodes.forEach(function (n) { if (n.media_id === id) { c++; } });
+    return c;
+  }
+  function mediaUsedCount(m) { return Math.max(mediaLocalUse(m.id), m.dipakai || 0); }
+  function fmtDuration(s) {
+    if (!s || s <= 0) { return ''; }
+    var m = Math.floor(s / 60);
+    var sec = Math.floor(s % 60);
+    return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  function renderMedia() {
+    var q = $('mediaQ') ? $('mediaQ').value.trim().toLowerCase() : '';
+    var list = mediaList.filter(function (m) {
+      return !q || (m.nama && m.nama.toLowerCase().indexOf(q) !== -1) || (m.file_asli && m.file_asli.toLowerCase().indexOf(q) !== -1);
+    });
+    if ($('mediaCount')) {
+      $('mediaCount').textContent = mediaList.length ? '(' + list.length + (list.length !== mediaList.length ? '/' + mediaList.length : '') + ')' : '';
+    }
+    var ul = $('mediaList');
+    if (!ul) { return; }
+    var sc = ul.scrollTop;
+    ul.textContent = '';
+    list.forEach(function (m) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'mediaitem' + (m.id === selectedMedia ? ' sel' : '');
+
+      if (m.poster_url) {
+        var img = document.createElement('img');
+        img.className = 'media-thumb';
+        img.src = m.poster_url;
+        img.alt = m.nama;
+        b.appendChild(img);
+      } else {
+        var ph = document.createElement('div');
+        ph.className = 'media-thumb-placeholder';
+        ph.innerHTML = '<i class="bi bi-play-circle"></i>';
+        b.appendChild(ph);
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'media-meta';
+      var t = document.createElement('span');
+      t.className = 'tt';
+      t.textContent = m.nama;
+      var sub = document.createElement('span');
+      sub.className = 'sub';
+      var u = mediaUsedCount(m);
+      var durStr = m.durasi ? fmtDuration(m.durasi) + ' · ' : '';
+      sub.textContent = durStr + fmtBytes(m.bytes) + ' · ' + (u ? 'dipakai ' + u + '×' : 'belum dipakai');
+      meta.appendChild(t);
+      meta.appendChild(sub);
+      b.appendChild(meta);
+
+      b.addEventListener('click', function () { pickMedia(m.id); });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+
+    var empty = $('mediaEmpty');
+    if (empty) {
+      empty.hidden = list.length > 0;
+      empty.textContent = mediaList.length ? 'Tidak ada video yang cocok dengan pencarian.' : 'Belum ada video. Unggah video MP4 atau WebM untuk videotron.';
+    }
+    ul.scrollTop = sc;
+    if (selectedMedia != null && !mediaById(selectedMedia)) { selectedMedia = null; }
+    updateMediaDetail(false);
+  }
+
+  function pickMedia(id) {
+    selectedMedia = id;
+    disarmMediaDelete();
+    renderMedia();
+    updateMediaDetail(true);
+  }
+
+  function disarmMediaDelete() {
+    clearTimeout(mediaDelTimer);
+    var btn = $('mediaDel');
+    if (btn) {
+      btn.classList.remove('armed');
+      btn.textContent = 'Hapus video';
+    }
+  }
+
+  function updateMediaDetail(isi) {
+    var m = selectedMedia != null ? mediaById(selectedMedia) : null;
+    var box = $('mediaDetail');
+    if (!box) { return; }
+    box.hidden = !m;
+    if (!m) {
+      var vp = $('mediaVideoPlayer');
+      if (vp) { vp.pause(); vp.removeAttribute('src'); }
+      return;
+    }
+    if (isi) {
+      if ($('media-nama')) { $('media-nama').value = m.nama; }
+      var vp = $('mediaVideoPlayer');
+      if (vp) {
+        vp.src = m.video_url;
+      }
+    }
+    var u = mediaUsedCount(m);
+    var resStr = (m.lebar && m.tinggi) ? (m.lebar + '×' + m.tinggi + ' px · ') : '';
+    var durStr = m.durasi ? (fmtDuration(m.durasi) + ' · ') : '';
+    if ($('mediaInfo')) {
+      $('mediaInfo').textContent = durStr + resStr + fmtBytes(m.bytes) + ' · ' + m.file_asli;
+    }
+    var delBtn = $('mediaDel');
+    if (delBtn) { delBtn.disabled = u > 0; }
+    var hint = $('mediaHint');
+    if (hint) {
+      hint.textContent = u === 0
+        ? ''
+        : (mediaLocalUse(m.id) > 0
+          ? 'Dipakai ' + mediaLocalUse(m.id) + ' layar di kampus. Ganti atau hapus layar itu dulu bila ingin menghapus video.'
+          : 'Masih tercatat dipakai layar yang penghapusannya belum disimpan. Klik Simpan dulu.');
+    }
+  }
+
+  if ($('mediaQ')) { $('mediaQ').addEventListener('input', renderMedia); }
+
+  if ($('mediaApplyToSelected')) {
+    $('mediaApplyToSelected').addEventListener('click', function () {
+      var m = selectedMedia != null ? mediaById(selectedMedia) : null;
+      if (!m) { return; }
+      var n = byId(selectedId);
+      if (!n || n.tipe !== 'layar') {
+        setStatus('Pilih objek bertipe Layar / Videotron terlebih dahulu untuk menerapkan video ini.', 'warn');
+        return;
+      }
+      n.media_id = m.id;
+      stage.refresh(n);
+      commit();
+      renderAll();
+      setStatus('Video "' + m.nama + '" dipasang pada layar "' + (n.judul || 'Layar') + '".');
+    });
+  }
+
+  if ($('mediaSave')) {
+    $('mediaSave').addEventListener('click', function () {
+      var m = selectedMedia != null ? mediaById(selectedMedia) : null;
+      if (!m) { return; }
+      var nama = $('media-nama').value.trim();
+      if (!nama) { setStatus('Nama video tidak boleh kosong.', 'warn'); return; }
+      var fd = new FormData();
+      fd.append('id', String(m.id));
+      fd.append('nama', nama);
+      post(cfg.urlMediaUbah, fd).then(function (res) {
+        if (!res.ok) { throw new Error(res.pesan || 'Gagal menyimpan nama.'); }
+        m.nama = res.media.nama;
+        renderMedia();
+        updateMediaDetail(false);
+        setStatus('Nama video berhasil disimpan.');
+      }).catch(function (err) {
+        setStatus('Gagal menyimpan nama video: ' + ((err && err.message) || err), 'warn');
+      });
+    });
+  }
+
+  if ($('mediaDel')) {
+    $('mediaDel').addEventListener('click', function () {
+      var m = selectedMedia != null ? mediaById(selectedMedia) : null;
+      if (!m || mediaUsedCount(m) > 0) { return; }
+      var btn = $('mediaDel');
+      if (!btn.classList.contains('armed')) {
+        btn.classList.add('armed');
+        btn.textContent = 'Yakin? Klik lagi';
+        mediaDelTimer = setTimeout(disarmMediaDelete, 3500);
+        return;
+      }
+      disarmMediaDelete();
+      var fd = new FormData();
+      fd.append('id', String(m.id));
+      post(cfg.urlMediaHapus, fd).then(function (res) {
+        if (!res.ok) { throw new Error(res.pesan || 'Gagal menghapus video.'); }
+        mediaList = mediaList.filter(function (x) { return x.id !== m.id; });
+        selectedMedia = null;
+        if (stage.setMedia) { stage.setMedia(mediaList); }
+        renderMedia();
+        updateMediaDetail(false);
+        setStatus('Video "' + m.nama + '" berhasil dihapus dari server.');
+      }).catch(function (err) {
+        setStatus('Video tidak dihapus: ' + ((err && err.message) || err), 'warn');
+      });
+    });
+  }
+
+  function extractVideoMetadata(file) {
+    return new Promise(function (resolve) {
+      var video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      var objUrl = URL.createObjectURL(file);
+      video.src = objUrl;
+
+      var cleaned = false;
+      function cleanup() {
+        if (!cleaned) {
+          cleaned = true;
+          URL.revokeObjectURL(objUrl);
+          video.remove();
+        }
+      }
+
+      var timer = setTimeout(function () {
+        cleanup();
+        resolve({ duration: 0, width: 0, height: 0, posterBlob: null });
+      }, 12000);
+
+      video.addEventListener('loadeddata', function () {
+        var dur = video.duration || 0;
+        var seekTime = dur > 1 ? 0.5 : 0;
+        video.currentTime = seekTime;
+      });
+
+      video.addEventListener('seeked', function () {
+        clearTimeout(timer);
+        var dur = video.duration || 0;
+        var w = video.videoWidth || 0;
+        var h = video.videoHeight || 0;
+        try {
+          var canvas = document.createElement('canvas');
+          var maxW = 480;
+          var cw = w > 0 ? Math.min(w, maxW) : 480;
+          var ch = w > 0 && h > 0 ? Math.round((cw / w) * h) : 270;
+          canvas.width = cw;
+          canvas.height = ch;
+          var ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, cw, ch);
+          canvas.toBlob(function (blob) {
+            cleanup();
+            resolve({ duration: dur, width: w, height: h, posterBlob: blob });
+          }, 'image/jpeg', 0.85);
+        } catch (e) {
+          cleanup();
+          resolve({ duration: dur, width: w, height: h, posterBlob: null });
+        }
+      });
+
+      video.addEventListener('error', function () {
+        clearTimeout(timer);
+        cleanup();
+        resolve({ duration: 0, width: 0, height: 0, posterBlob: null });
+      });
+    });
+  }
+
+  function uploadMedia(file) {
+    if (!/\.(mp4|webm)$/i.test(file.name)) {
+      setStatus('Format berkas tidak didukung. Gunakan berkas video MP4 (H.264) atau WebM.', 'warn');
+      return Promise.resolve(null);
+    }
+    var maxBytes = (cfg.maxMediaMb || 40) * 1048576;
+    if (file.size > maxBytes) {
+      setStatus('Berkas "' + file.name + '" terlalu besar. Maksimal ' + (cfg.maxMediaMb || 40) + ' MB.', 'warn');
+      return Promise.resolve(null);
+    }
+
+    setStatus('Memproses video "' + file.name + '"…');
+    return extractVideoMetadata(file).then(function (meta) {
+      setStatus('Mengunggah video "' + file.name + '" ke server…');
+      var fd = new FormData();
+      fd.append('berkas', file, file.name);
+      fd.append('nama', file.name.replace(/\.(mp4|webm)$/i, '').replace(/[_-]+/g, ' ').slice(0, 150));
+      fd.append('durasi', String(meta.duration || 0));
+      fd.append('lebar', String(meta.width || 0));
+      fd.append('tinggi', String(meta.height || 0));
+      if (meta.posterBlob) {
+        fd.append('poster', meta.posterBlob, 'poster.jpg');
+      }
+      return post(cfg.urlMedia, fd);
+    }).then(function (res) {
+      if (!res.ok) { throw new Error(res.pesan || 'Unggahan ditolak server.'); }
+      mediaList.push(res.media);
+      if (stage.setMedia) { stage.setMedia(mediaList); }
+      selectedMedia = res.media.id;
+      renderMedia();
+      updateMediaDetail(true);
+      stage.updateScreens(performance.now());
+      setStatus('Video "' + res.media.nama + '" berhasil diunggah.');
+      return res.media;
+    });
+  }
+
+  if ($('mediaFileIn')) {
+    $('mediaFileIn').addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      e.target.value = '';
+      if (!file) { return; }
+      uploadMedia(file).catch(function (err) {
+        setStatus('Gagal mengunggah video: ' + ((err && err.message) || err), 'warn');
+      });
+    });
+  }
+
+  /* ---------- form properti layar / videotron ---------- */
+  function fillLayarProps(n) {
+    var sel = $('f-media');
+    if (!sel) { return; }
+    var prev = n.media_id != null ? String(n.media_id) : '';
+    sel.textContent = '';
+    var oNone = document.createElement('option');
+    oNone.value = '';
+    oNone.textContent = '-- Tanpa video (Layar Standby) --';
+    sel.appendChild(oNone);
+    mediaList.forEach(function (m) {
+      var o = document.createElement('option');
+      o.value = String(m.id);
+      o.textContent = m.nama + ' (' + fmtBytes(m.bytes) + ')';
+      sel.appendChild(o);
+    });
+    sel.value = prev;
+
+    var uk = n.ukuran || [4.0, 2.4, 0.2];
+    if (document.activeElement !== $('f-layarW')) { $('f-layarW').value = String(uk[0] || 4.0); }
+    if (document.activeElement !== $('f-layarH')) { $('f-layarH').value = String(uk[1] || 2.4); }
+    if (document.activeElement !== $('f-layarD')) { $('f-layarD').value = String(uk[2] || 0.2); }
+    if (document.activeElement !== $('f-layarJarak')) { $('f-layarJarak').value = String(n.layar_jarak != null ? n.layar_jarak : 20); }
+    if ($('f-layarLoop')) { $('f-layarLoop').checked = n.layar_loop !== 0 && n.layar_loop !== false; }
+    if (document.activeElement !== $('f-layarTarget')) { $('f-layarTarget').value = n.layar_target || 'LAYAR'; }
+
+    updateLayarPreview(n);
+  }
+
+  function updateLayarPreview(n) {
+    var wrap = $('layarPreviewWrap');
+    var vp = $('layarPreviewVideo');
+    if (!wrap || !vp) { return; }
+    var m = n && n.media_id != null ? mediaById(n.media_id) : null;
+    if (m && m.video_url) {
+      wrap.hidden = false;
+      if (vp.src !== m.video_url) { vp.src = m.video_url; }
+    } else {
+      wrap.hidden = true;
+      vp.pause();
+      vp.removeAttribute('src');
+    }
+  }
+
+  if ($('f-media')) {
+    $('f-media').addEventListener('change', function (e) {
+      var n = byId(selectedId);
+      if (!n || n.tipe !== 'layar') { return; }
+      n.media_id = e.target.value ? parseInt(e.target.value, 10) : null;
+      stage.refresh(n);
+      commit();
+      updateLayarPreview(n);
+    });
+  }
+  function handleLayarSizeChange() {
+    var n = byId(selectedId);
+    if (!n || n.tipe !== 'layar') { return; }
+    var w = Math.max(0.5, parseFloat($('f-layarW').value) || 4.0);
+    var h = Math.max(0.5, parseFloat($('f-layarH').value) || 2.4);
+    var d = Math.max(0.05, parseFloat($('f-layarD').value) || 0.2);
+    n.ukuran = [r2(w), r2(h), r2(d)];
+    stage.refresh(n);
+    updateSizeInfo();
+    commit();
+  }
+  if ($('f-layarW')) { $('f-layarW').addEventListener('change', handleLayarSizeChange); }
+  if ($('f-layarH')) { $('f-layarH').addEventListener('change', handleLayarSizeChange); }
+  if ($('f-layarD')) { $('f-layarD').addEventListener('change', handleLayarSizeChange); }
+
+  if ($('f-layarJarak')) {
+    $('f-layarJarak').addEventListener('change', function (e) {
+      var n = byId(selectedId);
+      if (!n || n.tipe !== 'layar') { return; }
+      n.layar_jarak = Math.max(1, parseFloat(e.target.value) || 20);
+      e.target.value = String(n.layar_jarak);
+      stage.refresh(n);
+      commit();
+    });
+  }
+  if ($('f-layarLoop')) {
+    $('f-layarLoop').addEventListener('change', function (e) {
+      var n = byId(selectedId);
+      if (!n || n.tipe !== 'layar') { return; }
+      n.layar_loop = e.target.checked ? 1 : 0;
+      stage.refresh(n);
+      commit();
+    });
+  }
+  if ($('f-layarTarget')) {
+    $('f-layarTarget').addEventListener('change', function (e) {
+      var n = byId(selectedId);
+      if (!n || n.tipe !== 'layar') { return; }
+      n.layar_target = e.target.value.trim() || 'LAYAR';
+      stage.refresh(n);
+      commit();
+    });
+  }
 
   function renderAll() {
     renderTree();
@@ -1066,9 +1481,13 @@
   function snapV(v) { return $('snap').checked ? Math.round(v * 2) / 2 : r2(v); }
   function minPts(sub) { return K3D.AREA[sub].kind === 'garis' ? 2 : 3; }
 
-  function shiftArea(n, dx, dz) {
+  function shiftArea(n, dx, dz, dy) {
     if (!n.geometri) { return; }
-    n.geometri.titik = n.geometri.titik.map(function (p) { return [r2(p[0] + dx), r2(p[1] + dz)]; });
+    dy = dy || 0;
+    n.geometri.titik = n.geometri.titik.map(function (p) {
+      var ny = r2((p[2] || 0) + dy);
+      return ny !== 0 ? [r2(p[0] + dx), r2(p[1] + dz), ny] : [r2(p[0] + dx), r2(p[1] + dz)];
+    });
   }
 
   function updateHandles() {
@@ -1158,8 +1577,9 @@
       var n = byId(selectedId);
       var gp = stage.groundPoint(e.clientX, e.clientY);
       if (!n || !n.geometri || !gp) { return; }
-      var p = [snapV(gp.x), snapV(gp.z)];
       var cur = n.geometri.titik[dragH.idx];
+      var oldY = (cur && cur[2] != null) ? cur[2] : 0;
+      var p = oldY !== 0 ? [snapV(gp.x), snapV(gp.z), oldY] : [snapV(gp.x), snapV(gp.z)];
       if (cur && (cur[0] !== p[0] || cur[1] !== p[1])) {
         n.geometri.titik[dragH.idx] = p;
         dragH.moved = true;
@@ -1225,25 +1645,36 @@
         no.className = 'no';
         no.textContent = String(i + 1);
         var ix = document.createElement('input');
+        var iy = document.createElement('input');
         var iz = document.createElement('input');
-        [ix, iz].forEach(function (inp, k) {
+
+        var cols = [
+          { inp: ix, step: '0.5', label: 'X', set: function (node, v) { node.geometri.titik[i][0] = r2(Math.max(-5000, Math.min(5000, v))); } },
+          { inp: iy, step: '0.25', label: 'Y (Tinggi/Tanjakan)', set: function (node, v) {
+            var ny = r2(Math.max(-200, Math.min(200, v)));
+            node.geometri.titik[i][2] = ny;
+          } },
+          { inp: iz, step: '0.5', label: 'Z', set: function (node, v) { node.geometri.titik[i][1] = r2(Math.max(-5000, Math.min(5000, v))); } }
+        ];
+
+        cols.forEach(function (colItem) {
+          var inp = colItem.inp;
           inp.type = 'number';
-          inp.step = '0.5';
+          inp.step = colItem.step;
           inp.className = 'cpnum';
-          inp.dataset.i = String(i);
-          inp.dataset.k = String(k);
-          inp.setAttribute('aria-label', 'Titik ' + (i + 1) + (k ? ' Z' : ' X'));
+          inp.setAttribute('aria-label', 'Titik ' + (i + 1) + ' ' + colItem.label);
           inp.addEventListener('focus', function () { activeHandle = i; updateHandles(); });
           inp.addEventListener('change', function () {
             var node = byId(selectedId);
             var v = parseFloat(inp.value);
             if (!node || !node.geometri || !isFinite(v)) { fillPoints(node); return; }
-            node.geometri.titik[i][k] = r2(Math.max(-5000, Math.min(5000, v)));
+            colItem.set(node, v);
             stage.refresh(node);
             updateHandles();
             commit();
           });
         });
+
         var del = document.createElement('button');
         del.type = 'button';
         del.className = 'btn danger';
@@ -1261,16 +1692,18 @@
           updateHandles();
           commit();
         });
-        row.append(no, ix, iz, del);
+        row.append(no, ix, iy, iz, del);
         box.appendChild(row);
       });
     }
     Array.prototype.forEach.call(box.children, function (row, i) {
       row.classList.toggle('act', i === activeHandle);
       var ins = row.querySelectorAll('input');
-      [0, 1].forEach(function (k) {
-        if (pts[i] && document.activeElement !== ins[k]) { ins[k].value = String(pts[i][k]); }
-      });
+      if (pts[i]) {
+        if (document.activeElement !== ins[0]) { ins[0].value = String(pts[i][0]); }
+        if (document.activeElement !== ins[1]) { ins[1].value = String((pts[i][2] != null) ? pts[i][2] : 0); }
+        if (document.activeElement !== ins[2]) { ins[2].value = String(pts[i][1]); }
+      }
     });
   }
 
@@ -1279,6 +1712,7 @@
     if (!n || !n.geometri) { return; }
     var t = n.geometri.titik;
     var last = t[t.length - 1];
+    var lastY = (last && last[2] != null) ? last[2] : 0;
     var np;
     if (K3D.AREA[n.subtipe || 'taman'].kind === 'bidang') {
       np = [r2((last[0] + t[0][0]) / 2), r2((last[1] + t[0][1]) / 2)];
@@ -1286,6 +1720,7 @@
     } else {
       np = [r2(last[0] + 5), last[1]];
     }
+    if (lastY !== 0) { np.push(lastY); }
     t.push(np);
     activeHandle = t.length - 1;
     stage.refresh(n);
@@ -1297,9 +1732,10 @@
   $('mvBtn').addEventListener('click', function () {
     var n = byId(selectedId);
     var dx = parseFloat($('mv-x').value) || 0;
+    var dy = parseFloat($('mv-y') ? $('mv-y').value : 0) || 0;
     var dz = parseFloat($('mv-z').value) || 0;
-    if (!n || !n.geometri || (!dx && !dz)) { return; }
-    shiftArea(n, dx, dz);
+    if (!n || !n.geometri || (!dx && !dy && !dz)) { return; }
+    shiftArea(n, dx, dz, dy);
     stage.refresh(n);
     fillPoints(n);
     updateHandles();
@@ -1705,12 +2141,16 @@
       }
     }
     var pos = parent != null ? [0, 0, 0] : snappedTarget();
-    var n = mk({ parent_id: parent, tipe: tipe, judul: TYPES[tipe].label + ' baru', pos_x: pos[0], pos_y: pos[1], pos_z: pos[2] });
+    var extra = {};
+    if (tipe === 'layar') {
+      extra = { ukuran: [4.0, 2.4, 0.2], layar_loop: 1, layar_jarak: 20, layar_target: 'LAYAR' };
+    }
+    var n = mk(Object.assign({ parent_id: parent, tipe: tipe, judul: TYPES[tipe].label + ' baru', pos_x: pos[0], pos_y: pos[1], pos_z: pos[2] }, extra));
     nodes.push(n);
     selectedId = n.id;
     rebuildScene();
     commit();
-    setStatus('Kotak ditambahkan. Seret panahnya untuk memindahkan, lalu isi judul dan deskripsi.');
+    setStatus('Objek ditambahkan. Seret panahnya untuk memindahkan, lalu isi judul dan deskripsi.');
   });
 
   function addFromLibrary(lib, tipe) {
@@ -1877,6 +2317,8 @@
       renderJalur();
       library.forEach(function (l) { l.dipakai = localUse(l.id); });
       renderLibrary();
+      mediaList.forEach(function (m) { m.dipakai = mediaLocalUse(m.id); });
+      renderMedia();
       setStatus('Tersimpan: ' + res.tambah + ' ditambah, ' + res.ubah + ' diperbarui, ' + res.hapus + ' dihapus. Riwayat urungkan dikosongkan.');
     }).catch(function (err) {
       setStatus('Gagal menyimpan: ' + ((err && err.message) || err), 'warn');
@@ -2109,6 +2551,9 @@
     library = d.library || [];
     stage.setLibrary(library);
     renderLibrary();
+    mediaList = d.media || [];
+    if (stage.setMedia) { stage.setMedia(mediaList); }
+    renderMedia();
     nodes = d.objek || [];
     jalur = d.jalur || { titik: [], ruas: [] };
     jalurRev = d.jalur_rev || 0;

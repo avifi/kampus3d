@@ -239,6 +239,7 @@
       .then(function (d) {
         if (!d || !d.ok) { throw new Error('Data tidak valid'); }
         stage.setLibrary(d.library || []);
+        if (stage.setMedia) { stage.setMedia(d.media || []); }
         nodes = d.objek || [];
         rawJalur = d.jalur || null;
         avatarSetting = d.avatar || {};
@@ -260,6 +261,17 @@
   }
 
   /* ---------- pemilihan ---------- */
+  function updateSoundBtnIcon() {
+    var icon = $('cardSoundIcon');
+    if (!icon || selectedId == null) { return; }
+    var on = stage.getScreenAudio ? stage.getScreenAudio(selectedId) : false;
+    icon.className = on ? 'bi bi-volume-up text-success' : 'bi bi-volume-mute';
+    var btn = $('cardSound');
+    if (btn) {
+      btn.title = on ? 'Bisukan Suara Video' : 'Aktifkan Suara Video';
+    }
+  }
+
   function select(id, opts) {
     opts = opts || {};
     if (opts.fly && avatarCtrl && avatarCtrl.isActive()) {
@@ -274,9 +286,33 @@
       $('cardCrumb').textContent = crumb(n);
       $('cardTitle').textContent = n.judul || '(tanpa judul)';
       $('cardDesc').textContent = n.deskripsi || 'Belum ada deskripsi.';
+      var soundBtn = $('cardSound');
+      if (soundBtn) {
+        if (n.tipe === 'layar') {
+          soundBtn.hidden = false;
+          updateSoundBtnIcon();
+        } else {
+          soundBtn.hidden = true;
+        }
+      }
+      var ytBtn = $('cardYoutube');
+      if (ytBtn) {
+        var ytMatch = (n.deskripsi || '').match(/https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11}[^\s"'>]*)/i);
+        if (ytMatch) {
+          ytBtn.hidden = false;
+          ytBtn.href = ytMatch[0];
+        } else {
+          ytBtn.hidden = true;
+          ytBtn.href = '#';
+        }
+      }
       try { history.replaceState(null, '', '#objek-' + n.id); } catch (e) { /* diabaikan */ }
       if (opts.fly) { stage.flyTo(id); }
     } else {
+      var soundBtn = $('cardSound');
+      if (soundBtn) { soundBtn.hidden = true; }
+      var ytBtn = $('cardYoutube');
+      if (ytBtn) { ytBtn.hidden = true; }
       try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* diabaikan */ }
     }
     updateFloorPanelFor(n);
@@ -369,6 +405,18 @@
 
   $('cardFly').addEventListener('click', function () { if (selectedId != null) { stage.flyTo(selectedId); } });
   $('cardClose').addEventListener('click', function () { select(null); });
+  var soundBtn = $('cardSound');
+  if (soundBtn) {
+    soundBtn.addEventListener('click', function () {
+      if (selectedId == null) { return; }
+      var cur = stage.getScreenAudio ? stage.getScreenAudio(selectedId) : false;
+      if (stage.setScreenAudio) {
+        stage.setScreenAudio(selectedId, !cur);
+      }
+      updateSoundBtnIcon();
+      setStatus(!cur ? 'Suara video diaktifkan.' : 'Suara video dibisukan.');
+    });
+  }
   $('cardLink').addEventListener('click', function () {
     if (selectedId == null) { return; }
     var url = location.origin + location.pathname + location.search + '#objek-' + selectedId;
@@ -738,6 +786,7 @@
     if (n.tipe === 'lantai') { return 'bi-layers text-success'; }
     if (n.tipe === 'ruang') { return 'bi-door-open text-primary'; }
     if (n.tipe === 'barang') { return 'bi-box-seam text-secondary'; }
+    if (n.tipe === 'layar') { return 'bi-tv text-info'; }
     if (n.tipe === 'area') {
       if (n.subtipe === 'jalan') { return 'bi-signpost-2 text-success'; }
       if (n.subtipe === 'lapangan') { return 'bi-flag text-success'; }

@@ -50,6 +50,22 @@ class Kampus3d extends CI_Controller
             }
         }
 
+        // Media hanya dikirim untuk yang dipakai oleh objek layar terbit.
+        $url_media = base_url($this->config->item('k3d_media_upload_url', 'kampus3d'));
+        $media_dipakai = array();
+        foreach ($objek as $o) {
+            if (!empty($o['media_id'])) {
+                $media_dipakai[$o['media_id']] = TRUE;
+            }
+        }
+        $media = array();
+        foreach ($this->k3d->daftar_media($url_media) as $m) {
+            if (isset($media_dipakai[$m['id']])) {
+                unset($m['dipakai'], $m['file_asli']);
+                $media[] = $m;
+            }
+        }
+
         // Jalur hanya memuat titik di tanah kampus atau di objek yang terbit.
         $boleh = array();
         foreach ($objek as $o) {
@@ -64,6 +80,7 @@ class Kampus3d extends CI_Controller
                 'ok'      => TRUE,
                 'objek'   => $objek,
                 'library' => $library,
+                'media'   => $media,
                 'jalur'   => $jalur,
                 'avatar'  => $avatar,
             )));

@@ -105,6 +105,12 @@ $v = time();
       <h2 id="cardTitle"></h2>
       <p id="cardDesc"></p>
       <div class="k3d-card-actions">
+        <button class="btn btn-sm btn-outline-info k3d-btn-icon" id="cardSound" type="button" title="Aktifkan/Bisukan Suara Video" aria-label="Suara Video" hidden>
+          <i class="bi bi-volume-mute" id="cardSoundIcon"></i>
+        </button>
+        <a class="btn btn-sm btn-outline-danger k3d-btn-icon" id="cardYoutube" href="#" target="_blank" rel="noopener noreferrer" title="Buka di YouTube" aria-label="Buka di YouTube" hidden>
+          <i class="bi bi-youtube"></i>
+        </a>
         <button class="btn btn-sm btn-success k3d-btn-icon" id="cardExplore" type="button" title="Jelajah ke sini (Mulai mode jalan di depan objek ini)" aria-label="Jelajah ke sini">
           <i class="bi bi-person-walking"></i>
         </button>

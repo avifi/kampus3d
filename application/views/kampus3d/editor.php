@@ -103,6 +103,10 @@ $v = time();
         <i class="bi bi-collection"></i>
         <span>Pustaka</span>
       </button>
+      <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnMedia" data-tab="tabMedia" aria-selected="false" aria-controls="tabMedia" title="Media Video / Videotron">
+        <i class="bi bi-play-btn"></i>
+        <span>Media</span>
+      </button>
       <?php if ($cfg['role'] === 'superadmin'): ?>
       <button class="k3d-tab-btn" type="button" role="tab" id="tabBtnJalur" data-tab="tabJalur" aria-selected="false" aria-controls="tabJalur" title="Jalur Petunjuk Arah">
         <i class="bi bi-signpost-2"></i>
@@ -131,6 +135,7 @@ $v = time();
               <option value="lantai">Lantai</option>
               <option value="ruang">Ruang</option>
               <option value="barang">Barang</option>
+              <option value="layar">Layar / Videotron</option>
             </select>
           </div>
           <div class="field">
@@ -202,6 +207,40 @@ $v = time();
         </section>
       </div>
 
+      <!-- Tab Media: Video & Videotron -->
+      <div class="k3d-tab-pane" id="tabMedia" role="tabpanel" aria-labelledby="tabBtnMedia" hidden>
+        <section>
+          <h2 class="h">Media video <span id="mediaCount"></span></h2>
+          <div class="field">
+            <label for="mediaQ">Cari video</label>
+            <input id="mediaQ" type="search" placeholder="Nama video" autocomplete="off">
+          </div>
+          <div class="row" style="margin-bottom:8px;">
+            <label class="btn primary" for="mediaFileIn" style="cursor:pointer; width:100%; text-align:center;">
+              <i class="bi bi-upload"></i> Unggah Video (MP4 / WebM)
+            </label>
+            <input id="mediaFileIn" type="file" accept="video/mp4,video/webm" hidden>
+          </div>
+          <p class="note" style="margin-top:0;">Maksimal <?php echo isset($cfg['maxMediaMb']) ? (int)$cfg['maxMediaMb'] : 40; ?> MB per berkas. Format: MP4 (H.264) dan WebM.</p>
+          <ul class="medialist" id="mediaList"></ul>
+          <p class="note" id="mediaEmpty" hidden></p>
+          <div id="mediaDetail" class="box" hidden>
+            <div id="mediaVideoWrap" style="margin-bottom:8px; border-radius:6px; overflow:hidden; background:#000;">
+              <video id="mediaVideoPlayer" controls playsinline style="width:100%; max-height:180px; display:block;"></video>
+            </div>
+            <button class="btn primary" id="mediaApplyToSelected" type="button" style="width:100%; margin-bottom:8px;">Gunakan pada objek layar terpilih</button>
+            <div class="field"><label for="media-nama">Nama video</label><input id="media-nama" maxlength="150" autocomplete="off"></div>
+            <p class="info-line" id="mediaInfo"></p>
+            <div class="row">
+              <button class="btn" id="mediaSave" type="button">Simpan nama</button>
+              <button class="btn danger" id="mediaDel" type="button">Hapus video</button>
+            </div>
+            <p class="note" id="mediaHint"></p>
+          </div>
+          <p class="note">Ubah nama dan hapus video langsung berlaku di server, tidak menunggu tombol Simpan.</p>
+        </section>
+      </div>
+
       <?php if ($cfg['role'] === 'superadmin'): ?>
       <!-- Tab 5: Jalur Petunjuk Arah -->
       <div class="k3d-tab-pane" id="tabJalur" role="tabpanel" aria-labelledby="tabBtnJalur" hidden>
@@ -262,6 +301,7 @@ $v = time();
           <option value="lantai">Lantai</option>
           <option value="ruang">Ruang</option>
           <option value="barang">Barang</option>
+          <option value="layar">Layar / Videotron</option>
         </select>
       </div>
       <div class="field na"><label for="f-parent">Induk</label><select id="f-parent"></select></div>
@@ -299,14 +339,54 @@ $v = time();
           <label for="f-lebar">Lebar jalan (meter)</label>
           <input id="f-lebar" type="number" min="0.5" max="60" step="0.5">
         </div>
+        <div class="pthead" aria-hidden="true">
+          <span class="no">#</span>
+          <span>X (m)</span>
+          <span title="Ketinggian tanjakan/turunan dari tanah">Y (tinggi)</span>
+          <span>Z (m)</span>
+          <span></span>
+        </div>
         <div id="ao-points" class="ptlist"></div>
         <button class="btn" id="ptAdd" type="button">Tambah titik</button>
         <div class="fit">
           <input id="mv-x" type="number" step="0.5" placeholder="geser X" aria-label="Geser seluruh area di sumbu X">
+          <input id="mv-y" type="number" step="0.5" placeholder="geser Y" aria-label="Geser ketinggian seluruh area di sumbu Y (tanjakan)">
           <input id="mv-z" type="number" step="0.5" placeholder="geser Z" aria-label="Geser seluruh area di sumbu Z">
           <button class="btn" id="mvBtn" type="button">Geser</button>
         </div>
-        <p class="note">Seret titik putih di kanvas atau ubah angkanya. Koordinat dalam meter dari titik acuan kampus (X ke kanan, Z ke arah kamera awal).</p>
+        <p class="note">Seret titik putih di kanvas atau ubah angkanya. <strong>Y = elevasi/tinggi tanjakan atau turunan</strong> (meter). Karakter avatar akan otomatis menapak naik-turun saat melintas.</p>
+      </fieldset>
+      <fieldset class="box" id="layarBox" hidden>
+        <legend><i class="bi bi-tv"></i> Pengaturan Layar / Videotron</legend>
+        <div class="field">
+          <label for="f-media">Sumber video (Media)</label>
+          <select id="f-media">
+            <option value="">-- Tanpa video (Layar Standby) --</option>
+          </select>
+        </div>
+        <div class="xyz">
+          <label><span>Lebar (m)</span><input id="f-layarW" type="number" min="0.5" max="50" step="0.2" value="4.0"></label>
+          <label><span>Tinggi (m)</span><input id="f-layarH" type="number" min="0.5" max="30" step="0.2" value="2.4"></label>
+          <label><span>Tebal (m)</span><input id="f-layarD" type="number" min="0.05" max="5" step="0.05" value="0.2"></label>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label for="f-layarJarak">Jarak putar otomatis kamera (meter)</label>
+          <input id="f-layarJarak" type="number" min="1" max="200" step="1" value="20">
+          <small class="note" style="display:block; margin-top:2px;">Video hanya berputar bila kamera berada dalam jarak ini. Di luar jarak ini, layar menampilkan poster/standby untuk menghemat beban CPU/GPU.</small>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label class="check">
+            <input type="checkbox" id="f-layarLoop" checked> Putar berulang (Looping)
+          </label>
+        </div>
+        <div class="field" style="margin-top:8px;">
+          <label for="f-layarTarget">Target material pada model 3D (opsional)</label>
+          <input id="f-layarTarget" maxlength="60" placeholder="LAYAR" autocomplete="off">
+          <small class="note" style="display:block; margin-top:2px;">Bila objek layar memakai model 3D .glb khusus, nama material pada bagian layar yang akan ditimpa video (default: <code>LAYAR</code>).</small>
+        </div>
+        <div id="layarPreviewWrap" style="margin-top:8px; border-radius:6px; overflow:hidden; background:#000;" hidden>
+          <video id="layarPreviewVideo" controls playsinline muted style="width:100%; max-height:140px; display:block;"></video>
+        </div>
       </fieldset>
       <div class="actions">
         <button class="btn" id="focusBtn" type="button" title="Fokuskan kamera ke objek ini">Fokus kamera</button>

@@ -14,6 +14,7 @@ class Kampus3d_model extends CI_Model
         'ruang'  => array('lantai', 'gedung'),
         'barang' => array('ruang', 'lantai', 'gedung'),
         'area'   => array(),
+        'layar'  => array('ruang', 'lantai', 'gedung'),
     );
 
     private $batas_objek = 5000;
@@ -99,8 +100,12 @@ class Kampus3d_model extends CI_Model
             'subtipe'    => $r['subtipe'],
             'judul'      => (string) $r['judul'],
             'deskripsi'  => (string) $r['deskripsi'],
-            'library_id' => $r['library_id'] === NULL ? NULL : (int) $r['library_id'],
-            'pos_x'      => (float) $r['pos_x'],
+            'library_id'   => $r['library_id'] === NULL ? NULL : (int) $r['library_id'],
+            'media_id'     => isset($r['media_id']) && $r['media_id'] !== NULL ? (int) $r['media_id'] : NULL,
+            'layar_loop'   => isset($r['layar_loop']) ? (int) $r['layar_loop'] : 1,
+            'layar_jarak'  => isset($r['layar_jarak']) ? (float) $r['layar_jarak'] : 20.0,
+            'layar_target' => isset($r['layar_target']) ? (string) $r['layar_target'] : 'LAYAR',
+            'pos_x'        => (float) $r['pos_x'],
             'pos_y'      => (float) $r['pos_y'],
             'pos_z'      => (float) $r['pos_z'],
             'rot_x'      => (float) $r['rot_x'],
@@ -237,6 +242,109 @@ class Kampus3d_model extends CI_Model
         }
         $this->catat($user, 'library_hapus', 'model #' . (int) $id . ' "' . $row['nama'] . '"');
         return (string) $row['file_glb'];
+    }
+
+    /* ------------------------------------------------------------------
+     * Media Video & Poster Layar (k3d_media)
+     * ------------------------------------------------------------------ */
+
+    public function daftar_media($url_dasar)
+    {
+        $rows = $this->db->order_by('nama', 'ASC')->get('k3d_media')->result_array();
+        $pakai = $this->hitung_pemakaian_media();
+        $out = array();
+        foreach ($rows as $r) {
+            $id = (int) $r['id'];
+            $out[] = $this->media_ke_klien($r, $url_dasar, isset($pakai[$id]) ? $pakai[$id] : 0);
+        }
+        return $out;
+    }
+
+    public function hitung_pemakaian_media()
+    {
+        $q = $this->db->query('SELECT media_id, COUNT(*) AS jumlah FROM k3d_objek WHERE media_id IS NOT NULL GROUP BY media_id');
+        $out = array();
+        foreach ($q->result_array() as $r) {
+            $out[(int) $r['media_id']] = (int) $r['jumlah'];
+        }
+        return $out;
+    }
+
+    public function media_ke_klien($r, $url_dasar, $dipakai = 0)
+    {
+        $url_poster = NULL;
+        if (!empty($r['file_poster'])) {
+            $url_poster = $url_dasar . $r['file_poster'];
+        }
+        return array(
+            'id'           => (int) $r['id'],
+            'nama'         => $r['nama'],
+            'file_video'   => $r['file_video'],
+            'url'          => $url_dasar . $r['file_video'],
+            'video_url'    => $url_dasar . $r['file_video'],
+            'poster_url'   => $url_poster,
+            'file_poster'  => $r['file_poster'],
+            'file_asli'    => $r['file_asli'],
+            'bytes'        => (int) $r['ukuran_byte'],
+            'durasi'       => (float) $r['durasi_detik'],
+            'lebar'        => $r['lebar'] !== NULL ? (int) $r['lebar'] : NULL,
+            'tinggi'       => $r['tinggi'] !== NULL ? (int) $r['tinggi'] : NULL,
+            'mime'         => $r['tipe_mime'],
+            'dipakai'      => (int) $dipakai,
+        );
+    }
+
+    public function ambil_media($id)
+    {
+        return $this->db->get_where('k3d_media', array('id' => (int) $id))->row_array();
+    }
+
+    public function tambah_media($data)
+    {
+        $this->db->insert('k3d_media', $data);
+        return (int) $this->db->insert_id();
+    }
+
+    public function ubah_media($id, $nama, $user)
+    {
+        $row = $this->ambil_media($id);
+        $nama = $this->bersihkan_nama($nama);
+        if ( ! $row || $nama === '') {
+            return FALSE;
+        }
+        $this->db->where('id', (int) $id)->update('k3d_media', array('nama' => $nama));
+        $this->catat($user, 'media_ubah', 'media #' . (int) $id . ' "' . $nama . '"');
+        return TRUE;
+    }
+
+    public function hapus_media($id, $user)
+    {
+        $row = $this->ambil_media($id);
+        if ( ! $row) {
+            return array('ok' => FALSE, 'pesan' => 'Media tidak ditemukan.');
+        }
+        if ($this->pemakaian_media($id) > 0) {
+            return array('ok' => FALSE, 'pesan' => 'Media masih dipakai oleh objek layar.');
+        }
+        $this->db->query(
+            'DELETE FROM k3d_media WHERE id = ? AND NOT EXISTS (SELECT 1 FROM k3d_objek WHERE media_id = ?)',
+            array((int) $id, (int) $id)
+        );
+        if ((int) $this->db->affected_rows() < 1) {
+            return array('ok' => FALSE, 'pesan' => 'Media gagal dihapus atau masih dipakai.');
+        }
+        $this->catat($user, 'media_hapus', 'media #' . (int) $id . ' "' . $row['nama'] . '"');
+        return array(
+            'ok'          => TRUE,
+            'file_video'  => (string) $row['file_video'],
+            'file_poster' => (string) $row['file_poster'],
+        );
+    }
+
+    public function pemakaian_media($id)
+    {
+        $pakai = $this->hitung_pemakaian_media();
+        return isset($pakai[(int) $id]) ? $pakai[(int) $id] : 0;
     }
 
     /** Mengganti berkas sebuah model. Mengembalikan nama berkas lama, atau NULL bila model tidak ada. */
@@ -791,6 +899,17 @@ class Kampus3d_model extends CI_Model
         if (isset($r['library_id']) && is_numeric($r['library_id']) && (int) $r['library_id'] > 0) {
             $lib = (int) $r['library_id'];
         }
+        $media_id = NULL;
+        if (isset($r['media_id']) && is_numeric($r['media_id']) && (int) $r['media_id'] > 0) {
+            $media_id = (int) $r['media_id'];
+        }
+        $layar_loop = isset($r['layar_loop']) ? ((int) $r['layar_loop'] ? 1 : 0) : 1;
+        $layar_jarak = isset($r['layar_jarak']) && is_numeric($r['layar_jarak']) ? max(1, min(200, (float) $r['layar_jarak'])) : 20.0;
+        $layar_target = (isset($r['layar_target']) && is_string($r['layar_target'])) ? substr(trim($r['layar_target']), 0, 60) : 'LAYAR';
+
+        if ($tipe === 'layar' && $uk[0] === NULL) {
+            $uk = array(4.0, 2.4, 0.2); // Ukuran default layar videotron
+        }
         $subtipe = NULL;
         $geometri = NULL;
         $khusus = array();
@@ -806,17 +925,22 @@ class Kampus3d_model extends CI_Model
                 'scale_x' => 1, 'scale_y' => 1, 'scale_z' => 1);
             $parent = NULL;
             $lib = NULL;
+            $media_id = NULL;
             $uk = array(NULL, NULL, NULL);
         }
 
         $hasil = array(
-            'id'         => (int) $r['id'],
-            'parent_id'  => $parent,
-            'tipe'       => $tipe,
-            'subtipe'    => $subtipe,
-            'judul'      => $this->potong(isset($r['judul']) ? $r['judul'] : '', 120),
-            'deskripsi'  => $this->potong(isset($r['deskripsi']) ? $r['deskripsi'] : '', 2000),
-            'library_id' => $lib,
+            'id'           => (int) $r['id'],
+            'parent_id'    => $parent,
+            'tipe'         => $tipe,
+            'subtipe'      => $subtipe,
+            'judul'        => $this->potong(isset($r['judul']) ? $r['judul'] : '', 120),
+            'deskripsi'    => $this->potong(isset($r['deskripsi']) ? $r['deskripsi'] : '', 2000),
+            'library_id'   => $lib,
+            'media_id'     => $media_id,
+            'layar_loop'   => $layar_loop,
+            'layar_jarak'  => $layar_jarak,
+            'layar_target' => $layar_target,
             'pos_x'      => $this->angka($r, 'pos_x', 0, -100000, 100000),
             'pos_y'      => $this->angka($r, 'pos_y', 0, -100000, 100000),
             'pos_z'      => $this->angka($r, 'pos_z', 0, -100000, 100000),
@@ -857,11 +981,13 @@ class Kampus3d_model extends CI_Model
             }
             $x = round(max(-5000, min(5000, (float) $t[0])), 2);
             $z = round(max(-5000, min(5000, (float) $t[1])), 2);
+            $y = (isset($t[2]) && is_numeric($t[2])) ? round(max(-200, min(200, (float) $t[2])), 2) : 0.0;
             $n = count($titik);
-            if ($n > 0 && abs($titik[$n - 1][0] - $x) < 0.01 && abs($titik[$n - 1][1] - $z) < 0.01) {
+            $prevY = ($n > 0 && isset($titik[$n - 1][2])) ? $titik[$n - 1][2] : 0.0;
+            if ($n > 0 && abs($titik[$n - 1][0] - $x) < 0.01 && abs($titik[$n - 1][1] - $z) < 0.01 && abs($prevY - $y) < 0.01) {
                 continue; // titik kembar berurutan
             }
-            $titik[] = array($x, $z);
+            $titik[] = ($y != 0.0) ? array($x, $z, $y) : array($x, $z);
         }
         $garis = ($this->subtipe_area[$subtipe] === 'garis');
         if (count($titik) < ($garis ? 2 : 3)) {
@@ -878,20 +1004,24 @@ class Kampus3d_model extends CI_Model
     private function ke_baris($n)
     {
         return array(
-            'parent_id'  => NULL, // dipasang pada tahap kedua
-            'tipe'       => $n['tipe'],
-            'subtipe'    => $n['subtipe'],
-            'unit_nama'  => $n['unit_nama'],
-            'judul'      => $n['judul'],
-            'deskripsi'  => $n['deskripsi'],
-            'library_id' => $n['library_id'],
-            'pos_x'      => $n['pos_x'], 'pos_y' => $n['pos_y'], 'pos_z' => $n['pos_z'],
-            'rot_x'      => $n['rot_x'], 'rot_y' => $n['rot_y'], 'rot_z' => $n['rot_z'],
-            'scale_x'    => $n['scale_x'], 'scale_y' => $n['scale_y'], 'scale_z' => $n['scale_z'],
-            'ukuran_x'   => $n['ukuran_x'], 'ukuran_y' => $n['ukuran_y'], 'ukuran_z' => $n['ukuran_z'],
+            'parent_id'     => NULL, // dipasang pada tahap kedua
+            'tipe'          => $n['tipe'],
+            'subtipe'       => $n['subtipe'],
+            'unit_nama'     => $n['unit_nama'],
+            'judul'         => $n['judul'],
+            'deskripsi'     => $n['deskripsi'],
+            'library_id'    => $n['library_id'],
+            'media_id'      => (isset($n['media_id']) && $n['media_id'] !== NULL && (int) $n['media_id'] > 0) ? (int) $n['media_id'] : NULL,
+            'layar_loop'    => isset($n['layar_loop']) ? ((int) $n['layar_loop'] ? 1 : 0) : 1,
+            'layar_jarak'   => isset($n['layar_jarak']) ? (float) $n['layar_jarak'] : 20.0,
+            'layar_target'  => isset($n['layar_target']) ? substr((string) $n['layar_target'], 0, 60) : 'LAYAR',
+            'pos_x'         => $n['pos_x'], 'pos_y' => $n['pos_y'], 'pos_z' => $n['pos_z'],
+            'rot_x'         => $n['rot_x'], 'rot_y' => $n['rot_y'], 'rot_z' => $n['rot_z'],
+            'scale_x'       => $n['scale_x'], 'scale_y' => $n['scale_y'], 'scale_z' => $n['scale_z'],
+            'ukuran_x'      => $n['ukuran_x'], 'ukuran_y' => $n['ukuran_y'], 'ukuran_z' => $n['ukuran_z'],
             'geometri_json' => $n['geometri'] === NULL ? NULL : json_encode($n['geometri']),
-            'status'     => $n['status'],
-            'versi'      => $n['versi'],
+            'status'        => $n['status'],
+            'versi'         => $n['versi'],
         );
     }
 

@@ -55,6 +55,11 @@ class Kampus3d_admin extends CI_Controller
         return base_url($this->cfg('k3d_upload_url'));
     }
 
+    private function url_media()
+    {
+        return base_url($this->cfg('k3d_media_upload_url'));
+    }
+
     /** Menjawab JSON dan selalu menyertakan token CSRF terbaru. */
     private function json($data, $status = 200)
     {
@@ -163,6 +168,9 @@ class Kampus3d_admin extends CI_Controller
             'urlLibUbah'  => site_url('kampus3d_admin/library_ubah'),
             'urlLibHapus' => site_url('kampus3d_admin/library_hapus'),
             'urlLibGanti' => site_url('kampus3d_admin/library_ganti'),
+            'urlMedia'    => site_url('kampus3d_admin/media_unggah'),
+            'urlMediaUbah'=> site_url('kampus3d_admin/media_ubah'),
+            'urlMediaHapus'=> site_url('kampus3d_admin/media_hapus'),
             'urlUsers'    => site_url('kampus3d_admin/users'),
             'urlSimpanUserUnit' => site_url('kampus3d_admin/simpan_user_unit'),
             'urlAvatarSetting'  => site_url('kampus3d_admin/simpan_avatar_setting'),
@@ -172,6 +180,7 @@ class Kampus3d_admin extends CI_Controller
             'namaLengkap' => (string) $this->session->userdata('nama_lengkap'),
             'assetBase'   => base_url('assets/kampus3d/'),
             'maxMb'       => (int) $this->cfg('k3d_max_mb'),
+            'maxMediaMb'  => (int) $this->cfg('k3d_media_max_mb'),
             'csrf'        => array(
                 'name' => $this->security->get_csrf_token_name(),
                 'hash' => $this->security->get_csrf_hash(),
@@ -187,6 +196,7 @@ class Kampus3d_admin extends CI_Controller
             'ok'        => TRUE,
             'objek'     => $this->k3d->daftar_objek(FALSE),
             'library'   => $this->k3d->daftar_library($this->url_model()),
+            'media'     => $this->k3d->daftar_media($this->url_media()),
             'jalur'     => $this->k3d->daftar_jalur(),
             'jalur_rev' => $this->k3d->jalur_rev(),
             'avatar'    => $this->k3d->ambil_avatar_setting(),
@@ -451,6 +461,221 @@ class Kampus3d_admin extends CI_Controller
         }
         $u = unpack('Vversi/Vpanjang', substr($kepala, 4, 8));
         return $u['versi'] === 2 && $u['panjang'] === $ukuran;
+    }
+
+    /* ------------------------------------------------------------------
+     * Pengunggahan & Validasi Media Video Layar
+     * ------------------------------------------------------------------ */
+
+    public static function media_valid($path, $ukuran)
+    {
+        if ( ! is_file($path) || $ukuran <= 0) {
+            return array('ok' => FALSE, 'pesan' => 'Berkas tidak ditemukan atau kosong.');
+        }
+
+        // 1. Cek MIME type dengan finfo
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime = $finfo ? finfo_file($finfo, $path) : '';
+        if ($finfo) { finfo_close($finfo); }
+
+        $allowed_mimes = array('video/mp4', 'video/webm', 'video/quicktime');
+        if ( ! in_array($mime, $allowed_mimes, TRUE)) {
+            return array('ok' => FALSE, 'pesan' => 'Tipe konten berkas (' . htmlspecialchars($mime) . ') bukan video MP4 atau WebM yang sah.');
+        }
+
+        // 2. Cek magic bytes isi berkas
+        $fh = @fopen($path, 'rb');
+        if ( ! $fh) {
+            return array('ok' => FALSE, 'pesan' => 'Berkas tidak dapat dibaca di server.');
+        }
+        $header = fread($fh, 64);
+        fclose($fh);
+
+        // WebM: EBML header \x1A\x45\xDF\xA3
+        if (substr($header, 0, 4) === "\x1A\x45\xDF\xA3") {
+            return array('ok' => TRUE, 'format' => 'webm', 'mime' => 'video/webm');
+        }
+
+        // MP4 / QuickTime: 'ftyp' di offset 4
+        if (strlen($header) >= 12 && substr($header, 4, 4) === 'ftyp') {
+            return array('ok' => TRUE, 'format' => 'mp4', 'mime' => 'video/mp4');
+        }
+
+        return array('ok' => FALSE, 'pesan' => 'Struktur biner berkas bukan MP4 (H.264) atau WebM yang valid.');
+    }
+
+    private function terima_media()
+    {
+        $f = isset($_FILES['berkas']) ? $_FILES['berkas'] : NULL;
+        if ( ! is_array($f) || ! isset($f['error']) || is_array($f['error'])) {
+            return array('ok' => FALSE, 'status' => 400, 'pesan' => 'Tidak ada berkas video yang diterima.');
+        }
+        if ($f['error'] !== UPLOAD_ERR_OK) {
+            $batas = ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE);
+            return array('ok' => FALSE, 'status' => 400,
+                'pesan' => $batas ? 'Berkas melebihi batas ukuran server (cek upload_max_filesize di php.ini).' : 'Unggahan gagal (kode ' . (int) $f['error'] . ').');
+        }
+
+        $maks = (int) $this->cfg('k3d_media_max_mb') * 1048576;
+        $nama_asli = substr(preg_replace('/[\x00-\x1F\x7F]/', '', basename((string) $f['name'])), 0, 200);
+        if ( ! is_uploaded_file($f['tmp_name']) || $f['size'] <= 0) {
+            return array('ok' => FALSE, 'status' => 400, 'pesan' => 'Berkas tidak valid.');
+        }
+        if ($f['size'] > $maks) {
+            return array('ok' => FALSE, 'status' => 400, 'pesan' => 'Berkas video terlalu besar. Maksimal ' . (int) $this->cfg('k3d_media_max_mb') . ' MB.');
+        }
+
+        $ext = strtolower(pathinfo($nama_asli, PATHINFO_EXTENSION));
+        if ($ext !== 'mp4' && $ext !== 'webm') {
+            return array('ok' => FALSE, 'status' => 400, 'pesan' => 'Hanya berkas .mp4 dan .webm yang diterima.');
+        }
+
+        $validasi = self::media_valid($f['tmp_name'], (int) $f['size']);
+        if ( ! $validasi['ok']) {
+            return array('ok' => FALSE, 'status' => 400, 'pesan' => $validasi['pesan']);
+        }
+
+        $dir = rtrim($this->cfg('k3d_media_upload_dir'), '/\\') . DIRECTORY_SEPARATOR;
+        if ( ! is_dir($dir) && ! @mkdir($dir, 0755, TRUE)) {
+            return array('ok' => FALSE, 'status' => 500, 'pesan' => 'Folder media upload tidak dapat dibuat di server.');
+        }
+        if ( ! is_writable($dir)) {
+            return array('ok' => FALSE, 'status' => 500, 'pesan' => 'Folder media upload tidak dapat ditulis. Periksa izin folder.');
+        }
+
+        $acak = function_exists('random_bytes') ? bin2hex(random_bytes(12)) : md5(uniqid((string) mt_rand(), TRUE));
+        $nama_video = $acak . '.' . $validasi['format'];
+        if ( ! move_uploaded_file($f['tmp_name'], $dir . $nama_video)) {
+            return array('ok' => FALSE, 'status' => 500, 'pesan' => 'Berkas video gagal disimpan di server.');
+        }
+        @chmod($dir . $nama_video, 0644);
+
+        // Poster diam (dikirim dari klien via canvas capture atau upload poster)
+        $nama_poster = NULL;
+        if (isset($_FILES['poster']) && is_array($_FILES['poster']) && $_FILES['poster']['error'] === UPLOAD_ERR_OK && is_uploaded_file($_FILES['poster']['tmp_name'])) {
+            $fp = $_FILES['poster'];
+            $finfo_img = finfo_open(FILEINFO_MIME_TYPE);
+            $img_mime = $finfo_img ? finfo_file($finfo_img, $fp['tmp_name']) : '';
+            if ($finfo_img) { finfo_close($finfo_img); }
+            if (in_array($img_mime, array('image/jpeg', 'image/png', 'image/webp'), TRUE)) {
+                $ext_p = ($img_mime === 'image/png') ? 'png' : (($img_mime === 'image/webp') ? 'webp' : 'jpg');
+                $nama_poster = $acak . '_poster.' . $ext_p;
+                if (move_uploaded_file($fp['tmp_name'], $dir . $nama_poster)) {
+                    @chmod($dir . $nama_poster, 0644);
+                } else {
+                    $nama_poster = NULL;
+                }
+            }
+        }
+
+        $durasi = (float) $this->input->post('durasi_detik');
+        $lebar = (int) $this->input->post('lebar');
+        $tinggi = (int) $this->input->post('tinggi');
+
+        return array(
+            'ok'           => TRUE,
+            'file_video'   => $nama_video,
+            'file_asli'    => $nama_asli,
+            'file_poster'  => $nama_poster,
+            'ukuran'       => (int) $f['size'],
+            'durasi_detik' => max(0, $durasi),
+            'lebar'        => $lebar > 0 ? $lebar : NULL,
+            'tinggi'       => $tinggi > 0 ? $tinggi : NULL,
+            'tipe_mime'    => $validasi['mime'],
+        );
+    }
+
+    public function media_unggah()
+    {
+        if ($this->input->method() !== 'post') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Metode tidak diizinkan.'), 405);
+        }
+        $m = $this->terima_media();
+        if ( ! $m['ok']) {
+            return $this->json(array('ok' => FALSE, 'pesan' => $m['pesan']), $m['status']);
+        }
+        $nama = $this->k3d->bersihkan_nama($this->input->post('nama'));
+        if ($nama === '') {
+            $nama = $this->k3d->bersihkan_nama(pathinfo($m['file_asli'], PATHINFO_FILENAME));
+        }
+        if ($nama === '') {
+            $nama = 'video';
+        }
+
+        $id = $this->k3d->tambah_media(array(
+            'nama'         => $nama,
+            'file_video'   => $m['file_video'],
+            'file_asli'    => $m['file_asli'],
+            'file_poster'  => $m['file_poster'],
+            'ukuran_byte'  => $m['ukuran'],
+            'durasi_detik' => $m['durasi_detik'],
+            'lebar'        => $m['lebar'],
+            'tinggi'       => $m['tinggi'],
+            'tipe_mime'    => $m['tipe_mime'],
+            'dibuat_pada'  => date('Y-m-d H:i:s'),
+            'dibuat_oleh'  => $this->nama_user(),
+        ));
+
+        $item = $this->k3d->ambil_media($id);
+        $klien = $item ? $this->k3d->media_ke_klien($item, $this->url_media(), 0) : NULL;
+
+        $this->json(array(
+            'ok'    => TRUE,
+            'media' => $klien,
+            'pesan' => 'Video "' . $nama . '" berhasil diunggah.',
+        ));
+    }
+
+    public function media_ubah()
+    {
+        if ($this->input->method() !== 'post') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Metode tidak diizinkan.'), 405);
+        }
+        $id = (int) $this->input->post('id');
+        $nama = (string) $this->input->post('nama');
+        if ($id <= 0 || trim($nama) === '') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'ID dan nama media wajib diisi.'), 400);
+        }
+        $ok = $this->k3d->ubah_media($id, $nama, $this->nama_user());
+        if ( ! $ok) {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Media tidak ditemukan atau nama kosong.'), 400);
+        }
+        $item = $this->k3d->ambil_media($id);
+        $klien = $item ? $this->k3d->media_ke_klien($item, $this->url_media(), $this->k3d->pemakaian_media($id)) : NULL;
+        $this->json(array(
+            'ok'    => TRUE,
+            'media' => $klien,
+            'pesan' => 'Nama media berhasil diubah.',
+        ));
+    }
+
+    public function media_hapus()
+    {
+        if ($this->input->method() !== 'post') {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'Metode tidak diizinkan.'), 405);
+        }
+        $id = (int) $this->input->post('id');
+        if ($id <= 0) {
+            return $this->json(array('ok' => FALSE, 'pesan' => 'ID media tidak valid.'), 400);
+        }
+        $hasil = $this->k3d->hapus_media($id, $this->nama_user());
+        if ( ! $hasil['ok']) {
+            return $this->json(array('ok' => FALSE, 'pesan' => $hasil['pesan']), 400);
+        }
+
+        $dir = rtrim($this->cfg('k3d_media_upload_dir'), '/\\') . DIRECTORY_SEPARATOR;
+        if (!empty($hasil['file_video']) && is_file($dir . $hasil['file_video'])) {
+            @unlink($dir . $hasil['file_video']);
+        }
+        if (!empty($hasil['file_poster']) && is_file($dir . $hasil['file_poster'])) {
+            @unlink($dir . $hasil['file_poster']);
+        }
+
+        $this->json(array(
+            'ok'    => TRUE,
+            'id'    => $id,
+            'pesan' => 'Media berhasil dihapus.',
+        ));
     }
 }
 

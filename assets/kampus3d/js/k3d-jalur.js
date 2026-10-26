@@ -43,7 +43,15 @@
     var dy = b.pos.y - a.pos.y;
     var h = Math.sqrt(dx * dx + dz * dz);
     var moda = 'jalan';
-    if (Math.abs(dy) > BEDA_LANTAI) { moda = (a.t.jenis === 'lift' && b.t.jenis === 'lift') ? 'lift' : 'tangga'; }
+    if (Math.abs(dy) > BEDA_LANTAI) {
+      if (a.t.jenis === 'lift' && b.t.jenis === 'lift') {
+        moda = 'lift';
+      } else if (a.lantai != null || b.lantai != null || a.t.jenis === 'tangga' || b.t.jenis === 'tangga') {
+        moda = 'tangga';
+      } else {
+        moda = 'jalan';
+      }
+    }
     var panjang = Math.sqrt(h * h + dy * dy);
     var biaya = moda === 'lift' ? h + 20 + Math.abs(dy) * 0.5 : (moda === 'tangga' ? h + Math.abs(dy) * 4 : panjang);
     return { h: h, panjang: panjang, moda: moda, biaya: biaya };
@@ -735,8 +743,10 @@
       var ts = s.ts.slice().sort(function (a, b) { return a - b; });
       var uniq = [];
       ts.forEach(function (u) { if (!uniq.length || u - uniq[uniq.length - 1] > 1e-5) { uniq.push(u); } });
+      var ya = s.a[2] || 0;
+      var yb = s.b[2] || 0;
       s.idx = uniq.map(function (u) {
-        raw.push({ x: s.a[0] + (s.b[0] - s.a[0]) * u, z: s.a[1] + (s.b[1] - s.a[1]) * u, dalam: u > 1e-5 && u < 1 - 1e-5 });
+        raw.push({ x: s.a[0] + (s.b[0] - s.a[0]) * u, y: ya + (yb - ya) * u, z: s.a[1] + (s.b[1] - s.a[1]) * u, dalam: u > 1e-5 && u < 1 - 1e-5 });
         kunci[key(si, u)] = raw.length - 1;
         return raw.length - 1;
       });
@@ -770,16 +780,17 @@
       var ps = kel[r];
       var dalam = ps.filter(function (p) { return p.dalam; });
       var pakai = dalam.length ? dalam : ps;
-      var x = 0, z = 0;
-      pakai.forEach(function (p) { x += p.x; z += p.z; });
+      var x = 0, y = 0, z = 0;
+      pakai.forEach(function (p) { x += p.x; y += (p.y || 0); z += p.z; });
       x = Math.round(x / pakai.length * 100) / 100;
+      y = Math.round(y / pakai.length * 100) / 100;
       z = Math.round(z / pakai.length * 100) / 100;
       var ada = null;
       for (var i = 0; i < lama.length; i++) {
         if (Math.hypot(lama[i].x - x, lama[i].z - z) <= tol) { ada = lama[i]; break; }
       }
       if (ada) { idKel[r] = ada.id; pakaiUlang++; return; }
-      var t = { id: newId(), objek_id: null, jenis: 'jalur', label: '', ruang_id: null, x: x, y: 0, z: z };
+      var t = { id: newId(), objek_id: null, jenis: 'jalur', label: '', ruang_id: null, x: x, y: y, z: z };
       baru.push(t);
       lama.push(t);
       idKel[r] = t.id;

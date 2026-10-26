@@ -579,6 +579,96 @@
     var lastEntrancePos = null;
 
     /**
+     * Menghitung ketinggian permukaan tanah / tanjakan jalan di titik (x, z).
+     * Jika berada di atas ruas jalan berkontur/tanjakan, mengembalikan ketinggian lereng Y.
+     * Jika berada di luar jalan, mengembalikan 0 (atau currentFloorY jika dalam gedung).
+     */
+    function dapatkanElevasiTanah(x, z) {
+      if (currentLantaiId != null && currentFloorY > 0.5) {
+        return currentFloorY;
+      }
+
+      var nodes = stage.nodes || [];
+      var elevasiTertinggi = 0;
+      var ditemukan = false;
+
+      for (var nIdx = 0; nIdx < nodes.length; nIdx++) {
+        var node = nodes[nIdx];
+        if (!node || node.tipe !== 'area' || !node.geometri || !node.geometri.titik) { continue; }
+        var pts = node.geometri.titik;
+        if (pts.length < 2) { continue; }
+
+        if (node.subtipe === 'jalan' || node.subtipe === 'sungai') {
+          var halfW = ((node.geometri.lebar || 6) / 2) + 0.35;
+          for (var i = 0; i < pts.length - 1; i++) {
+            var p0 = pts[i];
+            var p1 = pts[i + 1];
+            var x0 = p0[0], z0 = p0[1], y0 = p0[2] || 0;
+            var x1 = p1[0], z1 = p1[1], y1 = p1[2] || 0;
+
+            var dx = x1 - x0;
+            var dz = z1 - z0;
+            var lenSq = dx * dx + dz * dz;
+            if (lenSq < 1e-6) {
+              var d0 = Math.hypot(x - x0, z - z0);
+              if (d0 <= halfW) {
+                if (!ditemukan || y0 > elevasiTertinggi) { elevasiTertinggi = y0; ditemukan = true; }
+              }
+              continue;
+            }
+
+            var t = ((x - x0) * dx + (z - z0) * dz) / lenSq;
+            var clampT = Math.max(0, Math.min(1, t));
+            var cx = x0 + clampT * dx;
+            var cz = z0 + clampT * dz;
+            var dist = Math.hypot(x - cx, z - cz);
+
+            if (dist <= halfW) {
+              var yRamp = y0 + clampT * (y1 - y0);
+              if (!ditemukan || yRamp > elevasiTertinggi) {
+                elevasiTertinggi = yRamp;
+                ditemukan = true;
+              }
+            }
+          }
+          for (var j = 0; j < pts.length; j++) {
+            var pj = pts[j];
+            var distJ = Math.hypot(x - pj[0], z - pj[1]);
+            if (distJ <= halfW) {
+              var yj = pj[2] || 0;
+              if (!ditemukan || yj > elevasiTertinggi) {
+                elevasiTertinggi = yj;
+                ditemukan = true;
+              }
+            }
+          }
+        } else if (node.subtipe === 'taman' || node.subtipe === 'lapangan' || node.subtipe === 'parkir') {
+          var maxY = 0;
+          for (var k = 0; k < pts.length; k++) {
+            if ((pts[k][2] || 0) > maxY) { maxY = pts[k][2] || 0; }
+          }
+          if (maxY > 0) {
+            var diDalam = false;
+            for (var a = 0, b = pts.length - 1; a < pts.length; b = a++) {
+              var xi = pts[a][0], zi = pts[a][1];
+              var xj = pts[b][0], zj = pts[b][1];
+              var intersect = ((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi + 1e-9) + xi);
+              if (intersect) { diDalam = !diDalam; }
+            }
+            if (diDalam) {
+              if (!ditemukan || maxY > elevasiTertinggi) {
+                elevasiTertinggi = maxY;
+                ditemukan = true;
+              }
+            }
+          }
+        }
+      }
+
+      return ditemukan ? elevasiTertinggi : (currentFloorY || 0);
+    }
+
+    /**
      * Memeriksa apakah posisi baru menabrak dinding luar.
      * Karakter di luar gedung tidak bisa menembus dinding gedung kecuali melalui pintu masuk.
      * Begitu melintasi pintu masuk, karakter bebas menjelajahi interior ruangan/lobi.
@@ -1070,18 +1160,21 @@
         // Sliding Collision: Coba kedua sumbu, atau satu sumbu jika terhalang
         var newX = avatarPos.x + stepX;
         var newZ = avatarPos.z + stepZ;
-        var canMoveBoth = !cekTabrakan(newX, newZ, avatarPos.y);
+        var nextY = dapatkanElevasiTanah(newX, newZ);
+        var canMoveBoth = !cekTabrakan(newX, newZ, nextY);
 
         if (canMoveBoth) {
           avatarPos.x = newX;
           avatarPos.z = newZ;
         } else {
           // Coba geser sumbu X saja
-          if (!cekTabrakan(avatarPos.x + stepX, avatarPos.z, avatarPos.y)) {
+          var yX = dapatkanElevasiTanah(avatarPos.x + stepX, avatarPos.z);
+          if (!cekTabrakan(avatarPos.x + stepX, avatarPos.z, yX)) {
             avatarPos.x += stepX;
           }
           // Coba geser sumbu Z saja
-          if (!cekTabrakan(avatarPos.x, avatarPos.z + stepZ, avatarPos.y)) {
+          var yZ = dapatkanElevasiTanah(avatarPos.x, avatarPos.z + stepZ);
+          if (!cekTabrakan(avatarPos.x, avatarPos.z + stepZ, yZ)) {
             avatarPos.z += stepZ;
           }
         }
@@ -1101,8 +1194,14 @@
         walkPhase = 0;
       }
 
-      // Ketinggian avatar mengikuti lantai saat ini
-      avatarPos.y = currentFloorY;
+      // Ketinggian avatar mengikuti kontur tanjakan/turunan tanah atau lantai saat ini
+      var targetElev = dapatkanElevasiTanah(avatarPos.x, avatarPos.z);
+      var diffY = targetElev - avatarPos.y;
+      if (Math.abs(diffY) > 0.005) {
+        avatarPos.y += diffY * Math.min(1, delta * 16);
+      } else {
+        avatarPos.y = targetElev;
+      }
       avatarContainer.position.copy(avatarPos);
 
       // 2. Animasi Manekin Prosedural (Ayunan tangan & kaki)
@@ -1150,8 +1249,13 @@
 
       avatarPos.copy(spawnPos || new THREE.Vector3(0, 0, 0));
       currentFloorY = floorY || 0;
-      avatarPos.y = currentFloorY;
       currentLantaiId = lantaiId || null;
+      var initElev = dapatkanElevasiTanah(avatarPos.x, avatarPos.z);
+      if (currentFloorY === 0 && initElev > 0) {
+        avatarPos.y = initElev;
+      } else {
+        avatarPos.y = currentFloorY;
+      }
       avatarYaw = (spawnYaw != null) ? spawnYaw : 0;
       avatarPitch = -0.05;
 
