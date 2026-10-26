@@ -387,14 +387,11 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .step-dist { font-size: 10px; color: var(--muted); font-family: var(--font-mono); }
 
 @media (max-width: 900px) {
-  html, body { height: auto; }
-  .app, .app.pub { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "top" "stage" "left" "right"; }
-  .stage { height: 62vh; min-height: 320px; }
-  .left, .right { overflow: visible; border: 0; border-top: 1px solid var(--line); }
-  .tools { margin-left: 0; }
+  .app:not(.pub) { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "top" "stage" "left" "right"; }
+  .app:not(.pub) .stage { height: 62vh; min-height: 320px; }
+  .app:not(.pub) .left, .app:not(.pub) .right { overflow: visible; border: 0; border-top: 1px solid var(--line); }
+  .app:not(.pub) .tools { margin-left: 0; }
   .hint { display: none; }
-  .floor-panel { right: 8px; top: 8px; width: 180px; }
-  .route-panel { left: 8px; top: 8px; width: calc(100% - 16px); max-height: 50vh; }
 }
 @media (prefers-reduced-motion: reduce) { .status { transition: none; } }
 
@@ -1079,28 +1076,319 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   background: rgba(0, 0, 0, 0.06);
 }
 
-/* Penyesuaian Responsif Layar Kecil */
+/* Tombol Floating Ikon (saat sidebar ditutup) */
+.k3d-floating-toggle {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  padding: 0 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.k3d-floating-toggle:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.k3d-floating-toggle:active {
+  transform: translateY(0);
+}
+.k3d-floating-toggle i {
+  font-size: 16px;
+  line-height: 1;
+}
+.k3d-floating-toggle:hover i {
+  color: var(--accent);
+}
+
+/* Tombol Floating Keluar Layar Penuh */
+.k3d-floating-exit-fs {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1035;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  cursor: pointer;
+  padding: 0 !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.k3d-floating-exit-fs:hover {
+  background: var(--bg);
+  border-color: var(--danger);
+  color: var(--danger);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.k3d-floating-exit-fs:active {
+  transform: translateY(0);
+}
+.k3d-floating-exit-fs i {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Mode Layar Penuh (Fullscreen) untuk Mobile & Desktop */
+.app.pub.k3d-fullscreen-active .stage {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100% !important;
+  height: 100dvh !important;
+  z-index: 1040 !important;
+  background: var(--vp-bg) !important;
+}
+.app.pub.k3d-fullscreen-active .stage canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+}
+.app.pub.k3d-fullscreen-active .top {
+  display: none !important;
+}
+.app.pub.k3d-fullscreen-active .floor-panel {
+  top: 54px;
+}
+
+/* Backdrop Overlay Mobile Drawer */
+.k3d-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 1045;
+  transition: opacity 0.25s ease;
+}
+.k3d-sidebar-backdrop[hidden] {
+  display: none !important;
+}
+
+/* Header Drawer Mobile */
+.k3d-sidebar-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Tombol Icon Serbaguna */
+.k3d-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0 !important;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+/* Tombol Aksi di Kartu */
+.k3d-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+/* Handle Sentuh Bottom Sheet */
+.k3d-card-handle {
+  width: 38px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  margin: 0 auto 8px;
+  flex-shrink: 0;
+}
+
+/* Penyesuaian Responsif Layar Kecil / Smartphone (Tahap Mobile Responsiveness) */
 @media (max-width: 768px) {
-  .app.pub {
-    grid-template-columns: 1fr;
-    grid-template-areas: "top" "stage";
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
   }
+  .app.pub {
+    height: 100%;
+    height: 100dvh;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "top" "stage";
+    overflow: hidden;
+  }
+  .app.pub .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Off-canvas Slide Drawer untuk Sidebar */
   .app.pub .left {
-    position: absolute;
-    top: 52px;
+    position: fixed;
+    top: 0;
     left: 0;
     bottom: 0;
-    width: min(320px, 85vw);
-    z-index: 20;
+    width: min(340px, 86vw);
+    height: 100%;
+    height: 100dvh;
+    z-index: 1050;
     background: var(--panel);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
     transform: translateX(0);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
   }
   .app.pub.sidebar-collapsed .left {
     transform: translateX(-100%);
-    display: block;
-    width: min(320px, 85vw);
+    pointer-events: none;
+    opacity: 0;
+  }
+  /* Bottom Sheet Modern untuk Kartu Info (#card) */
+  .app.pub .card {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 60vh;
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
+    z-index: 1040;
+    animation: k3dSheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    padding: 14px 16px;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  @keyframes k3dSheetSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+  /* Touch target ramah jempol untuk aksi kartu di HP */
+  .k3d-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0 2px;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  .k3d-card-actions .k3d-btn-icon {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+    flex-shrink: 0;
+    border-radius: 10px;
+  }
+  /* Bottom Sheet untuk Panel Petunjuk Arah / Navigasi */
+  .route-panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 65vh;
+    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
+    z-index: 1045;
+    padding: 16px;
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    animation: k3dSheetSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .route-steps {
+    max-height: 35vh;
+  }
+  /* Panel Lantai kompak di pojok kanan atas */
+  .floor-panel {
+    top: 10px;
+    right: 10px;
+    width: min(190px, 48vw);
+    max-height: 240px;
+    padding: 10px;
+    z-index: 1030;
+    font-size: 11px;
+  }
+  .floor-buttons {
+    max-height: 140px;
+  }
+  /* Status pill mengambang di layar ponsel */
+  .status {
+    left: 50%;
+    transform: translateX(-50%);
+    top: 10px;
+    width: auto;
+    max-width: calc(100% - 24px);
+    text-align: center;
+    font-size: 12px;
+    border-radius: 999px;
+    padding: 6px 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  }
+  .hint {
+    display: none !important;
+  }
+}
+
+/* Pengoptimalan Tambahan untuk Layar Ekstra Sempit (<= 576px) */
+@media (max-width: 576px) {
+  .top {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .app.pub .brand-text p {
+    display: none;
+  }
+  .app.pub .brand-title h1 {
+    font-size: 13px;
+  }
+  .quality-wrap {
+    display: none;
+  }
+  .top .tools .btn {
+    padding: 5px 8px;
+    font-size: 13px;
   }
 }
 

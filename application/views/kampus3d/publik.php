@@ -7,7 +7,11 @@ $v = time();
 <html lang="id" data-bs-theme="light" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171c19" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title><?php echo html_escape($judul); ?></title>
 <script>(function(){var t='light';try{t=localStorage.getItem('k3d_theme')||'light';}catch(e){}document.documentElement.setAttribute('data-theme',t);document.documentElement.setAttribute('data-bs-theme',t);})();</script>
 <link rel="stylesheet" href="<?php echo $a; ?>vendor/bootstrap/bootstrap.min.css">
@@ -55,7 +59,17 @@ $v = time();
     </div>
   </header>
 
+  <div class="k3d-sidebar-backdrop" id="sidebarBackdrop" hidden></div>
   <aside class="left" id="sidebar" aria-label="Pencarian dan daftar gedung">
+    <div class="k3d-sidebar-drawer-header d-md-none">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-buildings-fill text-primary fs-5"></i>
+        <span class="fw-bold fs-6">Pencarian &amp; Gedung</span>
+      </div>
+      <button class="btn btn-sm btn-outline-secondary k3d-btn-icon" id="sidebarCloseBtn" type="button" title="Tutup Panel" aria-label="Tutup Panel">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
     <section class="k3d-sidebar-search">
       <div class="input-group input-group-sm mb-2">
         <span class="input-group-text bg-body-tertiary border-end-0 text-muted" id="searchAddon"><i class="bi bi-search"></i></span>
@@ -89,8 +103,13 @@ $v = time();
     <canvas id="c" aria-label="Peta kampus 3D"></canvas>
 
     <!-- Tombol floating saat panel sidebar di-collapse -->
-    <button class="btn btn-light shadow-sm k3d-floating-toggle" id="floatingSidebarToggle" type="button" title="Buka Daftar Gedung & Ruang" aria-label="Buka Daftar" hidden>
-      <i class="bi bi-layout-sidebar-inset"></i>
+    <button class="btn btn-outline-secondary k3d-btn-icon shadow-sm k3d-floating-toggle" id="floatingSidebarToggle" type="button" title="Buka Pencarian &amp; Daftar Gedung" aria-label="Buka Pencarian dan Daftar Gedung" hidden>
+      <i class="bi bi-search"></i>
+    </button>
+
+    <!-- Tombol floating untuk keluar fullscreen saat header tersembunyi -->
+    <button class="btn btn-outline-secondary k3d-btn-icon shadow-sm k3d-floating-exit-fs" id="floatingExitFullscreenBtn" type="button" title="Keluar dari Layar Penuh" aria-label="Keluar dari Layar Penuh" hidden>
+      <i class="bi bi-fullscreen-exit"></i>
     </button>
 
     <div class="overlay status" id="status" role="status" aria-live="polite"></div>
@@ -98,6 +117,7 @@ $v = time();
 
     <!-- Kartu Info Objek Terpilih (Kompak dengan Tombol Icon-Only) -->
     <div class="overlay card shadow-lg" id="card" hidden>
+      <div class="k3d-card-handle d-md-none" aria-hidden="true"></div>
       <div class="d-flex align-items-center justify-content-between gap-2">
         <span class="badge text-bg-primary-subtle text-primary border" id="cardTag"></span>
         <span class="crumb text-truncate" id="cardCrumb"></span>

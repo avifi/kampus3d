@@ -73,16 +73,22 @@
     });
   }
 
-  /* ---------- toggle sidebar & layar penuh (tampilan lebih luas) ---------- */
+  /* ---------- toggle sidebar & layar penuh (tampilan lebih luas / responsif mobile) ---------- */
   var sidebarToggle = $('sidebarToggle');
   var floatingSidebarToggle = $('floatingSidebarToggle');
+  var sidebarCloseBtn = $('sidebarCloseBtn');
+  var sidebarBackdrop = $('sidebarBackdrop');
   var appEl = document.querySelector('.app.pub');
 
   function setSidebarCollapsed(collapsed) {
     if (!appEl) { return; }
     appEl.classList.toggle('sidebar-collapsed', collapsed);
     if (floatingSidebarToggle) {
-      floatingSidebarToggle.hidden = !collapsed;
+      var isAvatarActive = avatarCtrl && avatarCtrl.isActive();
+      floatingSidebarToggle.hidden = !collapsed || isAvatarActive;
+    }
+    if (sidebarBackdrop) {
+      sidebarBackdrop.hidden = collapsed || window.innerWidth > 768;
     }
     if (sidebarToggle) {
       sidebarToggle.setAttribute('title', collapsed ? 'Tampilkan Daftar Gedung (Buka Panel)' : 'Sembunyikan Daftar (Bikin 3D Lebih Luas)');
@@ -94,7 +100,7 @@
     try { localStorage.setItem('k3d_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
     setTimeout(function () {
       if (stage && stage.resize) { stage.resize(); }
-    }, 260);
+    }, 280);
   }
 
   if (sidebarToggle) {
@@ -106,8 +112,31 @@
   if (floatingSidebarToggle) {
     floatingSidebarToggle.addEventListener('click', function () {
       setSidebarCollapsed(false);
+      if (window.innerWidth <= 768) {
+        var qInput = $('q');
+        if (qInput) {
+          setTimeout(function () { qInput.focus(); }, 250);
+        }
+      }
     });
   }
+  if (sidebarCloseBtn) {
+    sidebarCloseBtn.addEventListener('click', function () {
+      setSidebarCollapsed(true);
+    });
+  }
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener('click', function () {
+      setSidebarCollapsed(true);
+    });
+  }
+
+  window.addEventListener('resize', function () {
+    if (sidebarBackdrop) {
+      var isCollapsed = appEl ? appEl.classList.contains('sidebar-collapsed') : false;
+      sidebarBackdrop.hidden = isCollapsed || window.innerWidth > 768;
+    }
+  });
 
   try {
     var savedCollapsed = localStorage.getItem('k3d_sidebar_collapsed');
@@ -116,25 +145,109 @@
     }
   } catch (e) {}
 
+  /* ---------- kontrol layar penuh (fullscreen & mobile immersive) ---------- */
   var fullscreenBtn = $('fullscreenBtn');
   var fullscreenIcon = $('fullscreenIcon');
+  var floatingExitFullscreenBtn = $('floatingExitFullscreenBtn');
+
+  function getNativeFullscreenEl() {
+    return document.fullscreenElement ||
+           document.webkitFullscreenElement ||
+           document.mozFullScreenElement ||
+           document.msFullscreenElement ||
+           null;
+  }
+
+  function isFullscreenActive() {
+    return !!getNativeFullscreenEl() || (appEl && appEl.classList.contains('k3d-fullscreen-active'));
+  }
+
+  function updateFullscreenUi(active) {
+    if (appEl) {
+      appEl.classList.toggle('k3d-fullscreen-active', active);
+    }
+    if (floatingExitFullscreenBtn) {
+      floatingExitFullscreenBtn.hidden = !active;
+    }
+    if (fullscreenIcon) {
+      fullscreenIcon.className = active ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen';
+    }
+    if (fullscreenBtn) {
+      fullscreenBtn.setAttribute('title', active ? 'Keluar dari Layar Penuh' : 'Layar Penuh (Fullscreen)');
+    }
+    var triggerResize = function () {
+      if (stage && stage.resize) { stage.resize(); }
+    };
+    triggerResize();
+    setTimeout(triggerResize, 80);
+    setTimeout(triggerResize, 280);
+  }
+
+  function enterFullscreen() {
+    var docEl = document.documentElement;
+    var req = docEl.requestFullscreen ||
+              docEl.webkitRequestFullscreen ||
+              docEl.webkitRequestFullScreen ||
+              docEl.mozRequestFullScreen ||
+              docEl.msRequestFullscreen;
+
+    if (req) {
+      try {
+        var p = req.call(docEl);
+        if (p && p.catch) {
+          p.catch(function () {
+            updateFullscreenUi(true);
+          });
+        }
+      } catch (e) {
+        updateFullscreenUi(true);
+      }
+    }
+    updateFullscreenUi(true);
+  }
+
+  function exitFullscreen() {
+    var exit = document.exitFullscreen ||
+               document.webkitExitFullscreen ||
+               document.webkitCancelFullScreen ||
+               document.mozCancelFullScreen ||
+               document.msExitFullscreen;
+
+    if (getNativeFullscreenEl() && exit) {
+      try {
+        var p = exit.call(document);
+        if (p && p.catch) { p.catch(function () {}); }
+      } catch (e) {}
+    }
+    updateFullscreenUi(false);
+  }
+
   if (fullscreenBtn) {
     fullscreenBtn.addEventListener('click', function () {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(function () {});
+      if (!isFullscreenActive()) {
+        enterFullscreen();
       } else {
-        document.exitFullscreen().catch(function () {});
+        exitFullscreen();
       }
-    });
-    document.addEventListener('fullscreenchange', function () {
-      var isFs = !!document.fullscreenElement;
-      if (fullscreenIcon) {
-        fullscreenIcon.className = isFs ? 'bi bi-fullscreen-exit' : 'bi bi-arrows-fullscreen';
-      }
-      fullscreenBtn.setAttribute('title', isFs ? 'Keluar dari Layar Penuh' : 'Layar Penuh (Fullscreen)');
-      setTimeout(function () { if (stage && stage.resize) { stage.resize(); } }, 150);
     });
   }
+
+  if (floatingExitFullscreenBtn) {
+    floatingExitFullscreenBtn.addEventListener('click', function () {
+      exitFullscreen();
+    });
+  }
+
+  ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(function (evtName) {
+    document.addEventListener(evtName, function () {
+      var nativeActive = !!getNativeFullscreenEl();
+      if (!nativeActive && appEl && appEl.classList.contains('k3d-fullscreen-active')) {
+        updateFullscreenUi(false);
+      } else if (nativeActive) {
+        updateFullscreenUi(true);
+      }
+    });
+  });
 
   /* ---------- pesan ---------- */
   var stTimer = 0;
@@ -212,6 +325,12 @@
         if (isActive) {
           $('card').hidden = true;
           $('tip').hidden = true;
+          setSidebarCollapsed(true);
+          if (floatingSidebarToggle) { floatingSidebarToggle.hidden = true; }
+        } else {
+          if (floatingSidebarToggle && appEl && appEl.classList.contains('sidebar-collapsed')) {
+            floatingSidebarToggle.hidden = false;
+          }
         }
       },
       onExit: function (goHome) {
@@ -282,6 +401,9 @@
     var n = id != null ? byId(id) : null;
     $('card').hidden = !n;
     if (n) {
+      if (opts.fly && window.innerWidth <= 768) {
+        setSidebarCollapsed(true);
+      }
       $('cardTag').textContent = K3D.labelOf(n);
       $('cardCrumb').textContent = crumb(n);
       $('cardTitle').textContent = n.judul || '(tanpa judul)';
@@ -553,6 +675,10 @@
     }
 
     if (panel) { panel.hidden = false; }
+    if ($('card')) { $('card').hidden = true; }
+    if (window.innerWidth <= 768) {
+      setSidebarCollapsed(true);
+    }
     $('routeDestTitle').textContent = n.judul || K3D.labelOf(n);
 
     // Hitung langkah tertulis & ringkasan
@@ -573,6 +699,10 @@
     curRouteTargetId = null;
     if ($('routePanel')) { $('routePanel').hidden = true; }
     if (ruteLayer) { ruteLayer.hapus(); }
+    if (selectedId != null) {
+      var n = byId(selectedId);
+      if (n && $('card')) { $('card').hidden = false; }
+    }
   }
 
   $('cardRoute').addEventListener('click', function () {
