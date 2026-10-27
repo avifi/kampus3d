@@ -298,15 +298,17 @@
       onInteract: function (id, node) { select(id, { fly: false }); },
       onEnterObject: function (id, node, masukInfo) {
         select(id, { fly: false });
-        if (node && node.tipe === 'ruang') {
-          var fl = lantaiOf(node);
-          if (fl && curFloors && curFloors.length) {
-            var fIdx = curFloors.findIndex(function (x) { return x.id === fl.id; });
-            if (fIdx >= 0) {
-              setFloorIndex(fIdx + 1, false);
-            }
-          }
+        if ($('floorPanel')) { $('floorPanel').hidden = true; }
+        var gId = getBuildingIdFor(id);
+        if (gId != null) {
+          var ge = stage.entries.get(gId);
+          if (ge && ge.body) { ge.body.visible = true; }
         }
+      },
+      onExitObject: function (id, node, exitPos) {
+        select(null, { fly: false });
+        resetAllFloors();
+        if ($('floorPanel')) { $('floorPanel').hidden = true; }
       },
       onTransitLantai: function (pt) {
         setStatus('Berpindah lantai via ' + (pt.jenis === 'lift' ? 'Lift' : 'Tangga') + ' (' + (pt.label || 'Lantai') + ')');
@@ -399,7 +401,8 @@
     selectedId = id;
     stage.setSelected(id);
     var n = id != null ? byId(id) : null;
-    $('card').hidden = !n;
+    var isAvatarActive = (typeof avatarCtrl !== 'undefined' && avatarCtrl && avatarCtrl.isActive && avatarCtrl.isActive());
+    $('card').hidden = isAvatarActive ? true : !n;
     if (n) {
       if (opts.fly && window.innerWidth <= 768) {
         setSidebarCollapsed(true);
@@ -779,6 +782,18 @@
       resetAllFloors();
       return;
     }
+    var isAvatarActive = (avatarCtrl && avatarCtrl.isActive && avatarCtrl.isActive());
+    if (isAvatarActive) {
+      // Saat avatar berada di dalam gedung, seluruh struktur fisik dan dinding gedung harus tetap solid utuh
+      curFloors.forEach(function (fl) {
+        var e = stage.entries.get(fl.id);
+        if (e) { e.group.visible = true; }
+      });
+      var ge = stage.entries.get(curGedungId);
+      if (ge && ge.body) { ge.body.visible = true; }
+      if ($('floorPanel')) { $('floorPanel').hidden = true; }
+      return;
+    }
     var cut = $('cutToggle').checked;
     var gEntry = stage.entries.get(curGedungId);
 
@@ -801,9 +816,11 @@
           e.group.visible = true;
         }
       });
-      // Jika mode potong aktif, sembunyikan fasad/atap gedung luar agar isi lantai terlihat jelas
+      // Jika mode potong aktif, sembunyikan fasad/atap gedung luar agar isi lantai terlihat jelas saat mode overview.
+      // Namun saat mode avatar/jelajah aktif, dinding dan fasad harus selalu utuh agar aktor berada di dalam ruangan tertutup.
       if (gEntry && gEntry.body) {
-        gEntry.body.visible = !cut;
+        var isAvatarActive = (typeof avatarCtrl !== 'undefined' && avatarCtrl && avatarCtrl.isActive && avatarCtrl.isActive());
+        gEntry.body.visible = isAvatarActive ? true : !cut;
       }
     }
     renderFloorButtons();
@@ -855,6 +872,10 @@
   function updateFloorPanelFor(n) {
     var panel = $('floorPanel');
     if (!panel) { return; }
+    if (avatarCtrl && avatarCtrl.isActive && avatarCtrl.isActive()) {
+      panel.hidden = true;
+      return;
+    }
     var g = n ? gedungOf(n) : null;
     if (!g) {
       curGedungId = null;
@@ -1335,20 +1356,19 @@
         }
 
         var pintuPos = pintuPt ? (pintuPt.pos || pintuPt.worldPos) : null;
+        var box = stage.worldBox(objId);
+        var c = (!box.isEmpty()) ? box.getCenter(new THREE.Vector3()) : null;
+
         if (pintuPos) {
           spawnPos.copy(pintuPos);
           floorY = pintuPos.y;
-          spawnYaw = 0;
-        } else {
-          // Ambil bounding box objek di dunia nyata
-          var box = stage.worldBox(objId);
-          if (!box.isEmpty()) {
-            var c = box.getCenter(new THREE.Vector3());
-            var s = box.getSize(new THREE.Vector3());
-            spawnPos.set(c.x, box.min.y, box.max.z + 1.2);
-            floorY = box.min.y;
-            spawnYaw = 0;
-          }
+          spawnYaw = c ? Math.atan2(c.x - spawnPos.x, c.z - spawnPos.z) : 0;
+        } else if (box && !box.isEmpty()) {
+          // Ambil bounding box objek di dunia nyata, posisikan di depan pintu/tangga
+          spawnPos.set(c.x, box.min.y, box.max.z + 1.8);
+          floorY = box.min.y;
+          // Hadapkan karakter menghadap ke pintu/bangunan
+          spawnYaw = Math.atan2(c.x - spawnPos.x, c.z - spawnPos.z);
         }
       }
     }

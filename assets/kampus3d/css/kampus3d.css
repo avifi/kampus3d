@@ -553,110 +553,413 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
   box-shadow: 0 2px 4px rgba(0,0,0,0.3);
 }
 
-/* Pop-up Masuk Gedung / Ruangan di Mode Jelajah */
+/* Pop-up Masuk/Keluar Gedung di Mode Jelajah (HUD Pill Ramping & Elegan) */
 .k3d-entry-popup {
   position: absolute;
-  bottom: 76px;
+  bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(15, 23, 42, 0.94);
+  background: rgba(15, 23, 42, 0.88);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   color: #ffffff;
-  padding: 14px 22px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  padding: 5px 8px 5px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  text-align: center;
-  min-width: 270px;
-  max-width: min(440px, 92vw);
+  justify-content: space-between;
+  gap: 12px;
+  max-width: min(520px, 94vw);
   pointer-events: auto;
   z-index: 150;
-  animation: entryPopupIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: entryPopupIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes entryPopupIn {
-  from { opacity: 0; transform: translate(-50%, 12px) scale(0.96); }
+  from { opacity: 0; transform: translate(-50%, 8px) scale(0.96); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+.k3d-entry-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
 }
 .k3d-entry-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
+  gap: 4px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  background: rgba(13, 122, 94, 0.28);
+  letter-spacing: 0.04em;
+  background: rgba(13, 122, 94, 0.35);
   color: #3fc79a;
   border: 1px solid rgba(63, 199, 154, 0.45);
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
-  margin-bottom: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .k3d-entry-title {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   color: #ffffff;
-  margin-bottom: 3px;
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
 }
 .k3d-entry-desc {
-  font-size: 12px;
-  color: #cbd5e1;
-  margin-bottom: 12px;
-  line-height: 1.35;
+  display: none !important; /* Ditiadakan agar HUD ramping dan tidak menutupi tengah layar */
 }
 .k3d-entry-actions {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
+  flex-shrink: 0;
 }
 .k3d-entry-btn {
   background: var(--accent);
   color: var(--accent-fg);
   border: none;
-  border-radius: 10px;
-  padding: 9px 22px;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 3px 12px rgba(13, 122, 94, 0.4);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.k3d-entry-btn:hover {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px rgba(13, 122, 94, 0.6);
+}
+.k3d-entry-btn:active {
+  transform: translateY(1px);
+}
+.k3d-entry-btn kbd {
+  background: rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+/* Tombol Aksi & Info Gedung di Mode Avatar (Desktop HUD) */
+.k3d-avatar-hud-actions {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 120;
+  pointer-events: auto;
+  animation: entryPopupIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.k3d-hud-btn {
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  box-shadow: 0 4px 14px rgba(13, 122, 94, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
-.k3d-entry-btn:hover {
-  filter: brightness(1.12);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(13, 122, 94, 0.6);
-}
-.k3d-entry-btn:active {
-  transform: translateY(1px);
-}
-.k3d-entry-btn kbd {
-  background: rgba(0, 0, 0, 0.28);
+.k3d-hud-btn kbd {
+  background: rgba(0, 0, 0, 0.3);
   color: #ffffff;
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 1px 6px;
   font-size: 11px;
   font-family: var(--font-mono);
-  margin-left: 2px;
+}
+.k3d-hud-btn.info {
+  background: rgba(2, 132, 199, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+}
+.k3d-hud-btn.info:hover {
+  background: #0284c7;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.5);
+}
+.k3d-hud-btn.act {
+  background: rgba(13, 122, 94, 0.92);
+  color: #ffffff;
+  border: 1px solid rgba(63, 199, 154, 0.5);
+}
+.k3d-hud-btn.act:hover {
+  background: #0d7a5e;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(13, 122, 94, 0.5);
+}
+@media (max-width: 900px), (pointer: coarse) {
+  .k3d-avatar-hud-actions {
+    display: none !important;
+  }
+}
+
+/* Pop-up Modal Informasi Gedung (Hanya muncul jika tombol Info Gedung diklik) */
+.k3d-info-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  pointer-events: auto;
+  padding: 16px;
+  animation: k3dFadeIn 0.2s ease-out;
+}
+.k3d-info-modal-backdrop[hidden] {
+  display: none !important;
+}
+
+.k3d-info-modal-card {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  animation: k3dModalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.k3d-info-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.k3d-info-modal-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.k3d-info-modal-close {
+  background: transparent;
+  border: 0;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+.k3d-info-modal-close:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.k3d-info-modal-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.k3d-info-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--fg);
+}
+.k3d-info-modal-sub {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.k3d-info-modal-desc {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.k3d-info-modal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+.k3d-info-modal-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.k3d-info-modal-footer {
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  background: var(--bg);
+}
+.k3d-info-modal-act-btn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.k3d-info-modal-act-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+.k3d-info-modal-act-btn kbd {
+  background: rgba(0, 0, 0, 0.25);
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+.k3d-info-modal-close-btn {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.k3d-info-modal-close-btn:hover {
+  background: var(--panel);
+  color: var(--fg);
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .k3d-info-modal-card {
+    max-height: 94vh;
+    max-width: 520px;
+  }
+  .k3d-info-modal-header {
+    padding: 8px 14px 6px;
+  }
+  .k3d-info-modal-body {
+    padding: 10px 14px;
+    gap: 6px;
+  }
+  .k3d-info-modal-title {
+    font-size: 15px;
+  }
+  .k3d-info-modal-desc {
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .k3d-info-modal-footer {
+    padding: 8px 14px;
+  }
 }
 @media (max-width: 768px) {
   .k3d-entry-popup {
-    bottom: 140px;
-    padding: 10px 16px;
-    min-width: 230px;
+    bottom: auto;
+    top: 14px;
+    left: 45%;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 190px);
+    padding: 4px 6px 4px 10px;
+    gap: 8px;
   }
-  .k3d-entry-title { font-size: 14px; }
-  .k3d-entry-btn { padding: 7px 16px; font-size: 12px; }
+  .k3d-entry-title {
+    font-size: 12px;
+    max-width: 140px;
+  }
+  .k3d-entry-btn {
+    padding: 5px 11px;
+    font-size: 11px;
+  }
+  .k3d-entry-btn kbd {
+    display: none;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .k3d-entry-popup {
+    bottom: auto;
+    top: 10px;
+    left: 42%;
+    transform: translateX(-50%);
+    max-width: min(340px, 48vw);
+    padding: 3px 5px 3px 9px;
+    gap: 6px;
+  }
+  .k3d-entry-title {
+    font-size: 11px;
+    max-width: 130px;
+  }
+  .k3d-entry-badge {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+  .k3d-entry-btn {
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+  .k3d-entry-btn kbd {
+    display: none;
+  }
 }
 
 /* Tombol Keluar Cepat di Pojok Kanan Atas */
@@ -681,6 +984,24 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .k3d-avatar-top-exit:hover {
   background: #b91c1c;
   transform: translateY(-1px);
+}
+@media (max-width: 768px) {
+  .k3d-avatar-top-exit {
+    top: 10px;
+    right: 10px;
+    padding: 5px 12px;
+    font-size: 11px;
+    border-radius: 999px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  .k3d-avatar-top-exit {
+    top: 10px;
+    right: 10px;
+    padding: 4px 10px;
+    font-size: 10.5px;
+    border-radius: 999px;
+  }
 }
 
 /* Bar Bantuan & Tombol Keluar */
@@ -794,6 +1115,17 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
 .k3d-mobile-btn.sprint.active {
   background: #f59e0b;
   border-color: #fbbf24;
+}
+.k3d-mobile-btn.info {
+  background: #0284c7;
+  border-color: #38bdf8;
+  font-size: 12px;
+  padding: 0 14px;
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.45);
+}
+.k3d-mobile-btn.info:active {
+  background: #0369a1;
+  transform: scale(0.96);
 }
 .k3d-mobile-btn.act {
   background: #10b981;

@@ -137,6 +137,21 @@
         if (node.isMesh) {
           node.castShadow = true;
           node.receiveShadow = true;
+          if (node.material) {
+            var mList = Array.isArray(node.material) ? node.material : [node.material];
+            mList.forEach(function (mat) {
+              // Dua sisi (DoubleSide) agar dinding bagian dalam solid terlihat dari interior
+              mat.side = THREE.DoubleSide;
+              var isGlass = mat.transparent && (mat.opacity < 0.9);
+              if (!isGlass) {
+                mat.transparent = false;
+                mat.opacity = 1.0;
+                mat.depthWrite = true;
+              } else {
+                mat.depthWrite = false;
+              }
+            });
+          }
         }
       });
       var wrap = new THREE.Group();
@@ -255,6 +270,137 @@
     function makePlaceholder(n, missing) {
       var t = TYPES[n.tipe] || TYPES.barang;
       var size = n.ukuran || t.size;
+      var grp = new THREE.Group();
+
+      if (n.tipe === 'ruang' || n.tipe === 'gedung') {
+        var w = size[0], h = size[1], d = size[2];
+        var wallT = 0.2;
+
+        // Dinding Solid Opaque dua sisi (tidak tembus pandang dari dalam maupun luar)
+        var matWall = new THREE.MeshStandardMaterial({
+          color: col(t.color),
+          roughness: 0.85,
+          metalness: 0.05,
+          side: THREE.DoubleSide
+        });
+
+        // Kaca Jendela Transparan (hanya lewat sini bisa melihat keluar ruangan)
+        var matGlass = new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          roughness: 0.1,
+          metalness: 0.9,
+          transparent: true,
+          opacity: 0.35,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+
+        // 1. Lantai Ruangan Solid
+        var floorGeo = new THREE.BoxGeometry(w, wallT, d);
+        var floorMesh = new THREE.Mesh(floorGeo, matWall);
+        floorMesh.position.y = wallT / 2;
+        floorMesh.castShadow = true;
+        floorMesh.receiveShadow = true;
+        floorMesh.userData.own = true;
+        grp.add(floorMesh);
+
+        // 2. Langit-langit / Atap Ruangan Solid
+        var ceilingGeo = new THREE.BoxGeometry(w, wallT, d);
+        var ceilingMesh = new THREE.Mesh(ceilingGeo, matWall);
+        ceilingMesh.position.y = h - wallT / 2;
+        ceilingMesh.castShadow = true;
+        ceilingMesh.userData.own = true;
+        ceilingMesh.userData.isCeiling = true;
+        grp.add(ceilingMesh);
+
+        // 3. Dinding Belakang Solid Opaque (Menutup pandangan ke luar)
+        var backGeo = new THREE.BoxGeometry(w, h, wallT);
+        var backMesh = new THREE.Mesh(backGeo, matWall);
+        backMesh.position.set(0, h / 2, -d / 2 + wallT / 2);
+        backMesh.castShadow = true;
+        backMesh.receiveShadow = true;
+        backMesh.userData.own = true;
+        grp.add(backMesh);
+
+        // 4. Dinding Samping Kiri & Kanan Solid Opaque
+        var leftGeo = new THREE.BoxGeometry(wallT, h, d);
+        var leftMesh = new THREE.Mesh(leftGeo, matWall);
+        leftMesh.position.set(-w / 2 + wallT / 2, h / 2, 0);
+        leftMesh.castShadow = true;
+        leftMesh.receiveShadow = true;
+        leftMesh.userData.own = true;
+        grp.add(leftMesh);
+
+        var rightGeo = new THREE.BoxGeometry(wallT, h, d);
+        var rightMesh = new THREE.Mesh(rightGeo, matWall);
+        rightMesh.position.set(w / 2 - wallT / 2, h / 2, 0);
+        rightMesh.castShadow = true;
+        rightMesh.receiveShadow = true;
+        rightMesh.userData.own = true;
+        grp.add(rightMesh);
+
+        // 5. Dinding Depan dengan Jendela Kaca dan Pintu Masuk
+        var frontWallW = Math.max(0.6, (w - 2.4) / 2);
+
+        // Dinding depan sebelah kiri
+        var frontWallL = new THREE.Mesh(new THREE.BoxGeometry(frontWallW, h, wallT), matWall);
+        frontWallL.position.set(-w / 2 + frontWallW / 2, h / 2, d / 2 - wallT / 2);
+        frontWallL.userData.own = true;
+        grp.add(frontWallL);
+
+        // Dinding depan sebelah kanan (dinding atas & bawah, tengahnya kaca jendela)
+        var winH = Math.min(2.0, h * 0.6);
+        var winBtmH = (h - winH) / 2;
+
+        var frontWallR_btm = new THREE.Mesh(new THREE.BoxGeometry(frontWallW, winBtmH, wallT), matWall);
+        frontWallR_btm.position.set(w / 2 - frontWallW / 2, winBtmH / 2, d / 2 - wallT / 2);
+        frontWallR_btm.userData.own = true;
+        grp.add(frontWallR_btm);
+
+        var frontWallR_top = new THREE.Mesh(new THREE.BoxGeometry(frontWallW, winBtmH, wallT), matWall);
+        frontWallR_top.position.set(w / 2 - frontWallW / 2, h - winBtmH / 2, d / 2 - wallT / 2);
+        frontWallR_top.userData.own = true;
+        grp.add(frontWallR_top);
+
+        // KACA JENDELA TRANSPARAN (Aktor bisa melihat pemandangan luar lewat sini)
+        var winGlass = new THREE.Mesh(new THREE.BoxGeometry(frontWallW, winH, 0.05), matGlass);
+        winGlass.position.set(w / 2 - frontWallW / 2, winBtmH + winH / 2, d / 2 - wallT / 2);
+        winGlass.userData.own = true;
+        winGlass.userData.isWindow = true;
+        grp.add(winGlass);
+
+        // Kusen Jendela
+        var winFrame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(frontWallW, winH, 0.08)), new THREE.LineBasicMaterial({ color: 0x1e293b }));
+        winFrame.position.copy(winGlass.position);
+        winFrame.userData.own = true;
+        winFrame.userData.noPick = true;
+        grp.add(winFrame);
+
+        // Balok atas pintu
+        var lintelH = Math.max(0.4, h - 2.4);
+        var lintel = new THREE.Mesh(new THREE.BoxGeometry(2.4, lintelH, wallT), matWall);
+        lintel.position.set(0, h - lintelH / 2, d / 2 - wallT / 2);
+        lintel.userData.own = true;
+        grp.add(lintel);
+
+        // Kusen pintu buka
+        var doorFrame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(2.4, 2.4, wallT + 0.04)), new THREE.LineBasicMaterial({ color: 0x0f172a }));
+        doorFrame.position.set(0, 1.2, d / 2 - wallT / 2);
+        doorFrame.userData.own = true;
+        doorFrame.userData.noPick = true;
+        grp.add(doorFrame);
+
+        // Garis tepi
+        var gBox = new THREE.BoxGeometry(w, h, d);
+        gBox.translate(0, h / 2, 0);
+        var lines = new THREE.LineSegments(new THREE.EdgesGeometry(gBox), new THREE.LineBasicMaterial({ color: col(t.color), opacity: 0.5, transparent: true }));
+        lines.userData.own = true;
+        lines.userData.noPick = true;
+        grp.add(lines);
+
+        return grp;
+      }
+
       var g = new THREE.BoxGeometry(size[0], size[1], size[2]);
       g.translate(0, size[1] / 2, 0);
       var opacity = missing ? Math.min(t.opacity, 0.45) : t.opacity;
@@ -269,7 +415,6 @@
       var lines = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col(t.color) }));
       lines.userData.own = true;
       lines.userData.noPick = true;
-      var grp = new THREE.Group();
       grp.add(mesh, lines);
       return grp;
     }
@@ -750,7 +895,7 @@
 
       var instancedLibIds = new Set();
       libCounts.forEach(function (count, libId) {
-        if (count >= 2) { instancedLibIds.add(libId); }
+        if (count >= 15) { instancedLibIds.add(libId); }
       });
 
       nodes.forEach(function (n) {
